@@ -23,7 +23,8 @@ typedef enum { T_FILE, T_DIRECTORY } inode_type;
 typedef struct {
     inode_type i_node_type;
     size_t i_size;
-    int i_data_block;
+    int i_supplement_block;
+    int i_data_block[INODE_DATA_BLOCKS];
     /* in a real FS, more fields would exist here */
 } inode_t;
 
@@ -52,6 +53,8 @@ int find_in_dir(int inumber, char const *sub_name);
 
 int data_block_alloc();
 int data_block_free(int block_number);
+int data_inode_blocks_alloc(inode_t *inode, size_t size);
+int data_inode_blocks_free(const inode_t *inode);
 void *data_block_get(int block_number);
 
 int add_to_open_file_table(int inumber, size_t offset);

@@ -61,6 +61,34 @@ static void insert_delay() {
     }
 }
 
+static int blocks_alloc_impl(int *p, size_t sz) {
+    if (sz == 0)
+        return 0;
+
+    if ((*p = data_block_alloc()) == -1)
+        return -1;
+
+    return blocks_alloc_impl(p + 1, sz - 1);
+}
+
+static inline int alloc_inside_supplement_block(inode_t *inode,
+                                                size_t cur_blocks,
+                                                size_t request_blocks) {
+    /* Allocate index block. */
+    if (inode->i_supplement_block == UNALLOCATED_BLOCK)
+        if ((inode->i_supplement_block = data_block_alloc()) == -1)
+            return -1;
+
+    return blocks_alloc_impl(data_block_get(inode->i_supplement_block) +
+                                 cur_blocks - INODE_DATA_BLOCKS,
+                             request_blocks);
+}
+
+static inline int alloc_inside_inode_blocks(inode_t *inode, size_t cur_blocks,
+                                            size_t request_blocks) {
+    return blocks_alloc_impl(&inode->i_data_block[cur_blocks], request_blocks);
+}
+
 /*
  * Initializes FS state
  */
@@ -90,7 +118,7 @@ void state_destroy() { /* nothing to do */
  */
 int inode_create(inode_type n_type) {
     for (int inumber = 0; inumber < INODE_TABLE_SIZE; inumber++) {
-        if ((inumber * (int) sizeof(allocation_state_t)) == 0) {
+        if ((inumber * (int)sizeof(allocation_state_t)) == 0) {
             insert_delay(); // simulate storage access delay (to freeinode_ts)
         }
 
@@ -100,6 +128,7 @@ int inode_create(inode_type n_type) {
             freeinode_ts[inumber] = TAKEN;
             insert_delay(); // simulate storage access delay (to i-node)
             inode_table[inumber].i_node_type = n_type;
+            inode_table[inumber].i_supplement_block = UNALLOCATED_BLOCK;
 
             if (n_type == T_DIRECTORY) {
                 /* Initializes directory (filling its block with empty
@@ -111,7 +140,7 @@ int inode_create(inode_type n_type) {
                 }
 
                 inode_table[inumber].i_size = BLOCK_SIZE;
-                inode_table[inumber].i_data_block = b;
+                inode_table[inumber].i_data_block[0] = b;
 
                 dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(b);
                 if (dir_entry == NULL) {
@@ -125,7 +154,7 @@ int inode_create(inode_type n_type) {
             } else {
                 /* In case of a new file, simply sets its size to 0 */
                 inode_table[inumber].i_size = 0;
-                inode_table[inumber].i_data_block = -1;
+                inode_table[inumber].i_data_block[0] = -1;
             }
             return inumber;
         }
@@ -150,8 +179,9 @@ int inode_delete(int inumber) {
 
     freeinode_ts[inumber] = FREE;
 
-    if (inode_table[inumber].i_size > 0) {
-        if (data_block_free(inode_table[inumber].i_data_block) == -1) {
+    const inode_t *inode = &inode_table[inumber];
+    if (inode->i_size > 0) {
+        if (data_inode_blocks_free(inode) == -1) {
             return -1;
         }
     }
@@ -201,7 +231,7 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
 
     /* Locates the block containing the directory's entries */
     dir_entry_t *dir_entry =
-        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block);
+        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[0]);
     if (dir_entry == NULL) {
         return -1;
     }
@@ -234,7 +264,7 @@ int find_in_dir(int inumber, char const *sub_name) {
 
     /* Locates the block containing the directory's entries */
     dir_entry_t *dir_entry =
-        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block);
+        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[0]);
     if (dir_entry == NULL) {
         return -1;
     }
@@ -256,7 +286,7 @@ int find_in_dir(int inumber, char const *sub_name) {
  */
 int data_block_alloc() {
     for (int i = 0; i < DATA_BLOCKS; i++) {
-        if (i * (int) sizeof(allocation_state_t) % BLOCK_SIZE == 0) {
+        if (i * (int)sizeof(allocation_state_t) % BLOCK_SIZE == 0) {
             insert_delay(); // simulate storage access delay to free_blocks
         }
 
@@ -280,6 +310,42 @@ int data_block_free(int block_number) {
 
     insert_delay(); // simulate storage access delay to free_blocks
     free_blocks[block_number] = FREE;
+    return 0;
+}
+
+/*
+ * Allocates data blocks according to the passed size
+ * Returns: block index if successful, -1 otherwise
+ */
+int data_inode_blocks_alloc(inode_t *inode, size_t size) {
+    if (size == 0)
+        return 0;
+
+    const size_t total_blocks = BLOCK_SIZEOF(size + inode->i_size);
+    const size_t cur_blocks = BLOCK_SIZEOF(inode->i_size);
+    const size_t request_blocks = total_blocks - cur_blocks;
+
+    if (!request_blocks)
+        return 0;
+
+    return (TFS_UNLIKELY(total_blocks > INODE_DATA_BLOCKS)
+                ? alloc_inside_supplement_block
+                : alloc_inside_inode_blocks)(inode, cur_blocks, request_blocks);
+}
+
+/* Frees all data blocks from an inode
+ * Input
+ * 	- pointer to an inode
+ * Returns: 0 if success, -1 otherwise
+ */
+int data_inode_blocks_free(const inode_t *inode) {
+    const size_t blocks = BLOCK_SIZEOF(inode->i_size);
+    for (int i = 0; i < blocks; ++i) {
+        if (data_block_free(inode->i_data_block[i]) == -1) {
+            return -1;
+        }
+    }
+
     return 0;
 }
 
