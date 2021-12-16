@@ -202,3 +202,35 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 
     return (ssize_t)to_read;
 }
+
+int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
+    int f = tfs_open(source_path,
+                     0); // nao ha flag TFS_O_CREATE suponho que seja por o 0?
+    FILE *fd =
+        fopen(dest_path,
+              "w+"); // abrir em write mode com o mais para criar se nao existir
+
+    char buffer[BLOCK_SIZE]; // nao sei se este e o tamanho maximo do ficheiro,
+                             // maybe? pensei fazer com loop? talvez nao? assim
+                             // se calhar e a maneira certa?
+    int bytes_read = 0;
+    int bytes_written = 0;
+
+    bytes_read =
+        (int)tfs_read(f, buffer, sizeof(buffer) - 1); // typecast para int??????
+
+    if (bytes_read == -1) {
+        return -1;
+    }
+
+    buffer[bytes_read] = '\0';
+
+    bytes_written =
+        (int)fwrite(buffer, 1, strlen(buffer), fd); // typecast para int????????
+
+    if (bytes_written == -1) {
+        return -1;
+    }
+
+    return 0;
+}

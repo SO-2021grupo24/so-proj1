@@ -4,7 +4,7 @@
 
 int main() {
 
-    char *str = "AAA!";
+    char *str = "POGGERS!";
     char *path = "/f1";
     char buffer[40];
 
@@ -31,6 +31,8 @@ int main() {
     assert(strcmp(buffer, str) == 0);
 
     assert(tfs_close(f) != -1);
+
+    assert(tfs_copy_to_external_fs(path, "./POGGERS!!!!!") != -1);
 
     printf("Successful test.\n");
 
