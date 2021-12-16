@@ -188,10 +188,6 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         to_read = len;
     }
 
-    if (file->of_offset + to_read >= MAX_FILESIZE) {
-        return -1;
-    }
-
     if (to_read > 0) {
         read_impl(file->of_offset, inode, buffer, to_read, 0);
 
