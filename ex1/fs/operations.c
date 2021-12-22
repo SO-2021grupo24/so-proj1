@@ -96,16 +96,28 @@ int tfs_open(char const *name, int flags) {
 
 int tfs_close(int fhandle) { return remove_from_open_file_table(fhandle); }
 
-static void read_impl(size_t of_offset, inode_t *inode, void *buffer,
-                      size_t to_read, size_t cur_block) {
-    if (to_read == 0)
-        return;
+static void *rw_get_block(inode_t *inode, size_t cur_block) {
+    if (TFS_LIKELY(cur_block < INODE_DATA_BLOCKS))
+        return data_block_get(inode->i_data_block[cur_block]);
 
-    void *block =
-        (TFS_UNLIKELY(cur_block > 10)
-             ? (data_block_get(((int *)data_block_get(
-                   inode->i_supplement_block))[cur_block - INODE_DATA_BLOCKS]))
-             : (data_block_get(inode->i_data_block[cur_block])));
+    const int *const index_blk =
+        (int *)data_block_get(inode->i_supplement_block);
+    if (index_blk == NULL)
+        return NULL;
+
+    return data_block_get(index_blk[cur_block - INODE_DATA_BLOCKS]);
+}
+
+static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
+                         size_t to_read, size_t cur_block) {
+    if (to_read == 0)
+        return 0;
+
+    void *const block = rw_get_block(inode, cur_block);
+
+    if (block == NULL)
+        return -1;
+
     const size_t offset = BLOCK_OFFSET(of_offset);
     const size_t len =
         (to_read + offset) < BLOCK_SIZE ? to_read : (BLOCK_SIZE - offset);
@@ -116,20 +128,21 @@ static void read_impl(size_t of_offset, inode_t *inode, void *buffer,
                      cur_block + 1);
 }
 
-static void write_impl(size_t of_offset, inode_t *inode, void const *buffer,
-                       size_t to_write, size_t cur_block) {
+static ssize_t write_impl(size_t of_offset, inode_t *inode, void const *buffer,
+                          size_t to_write, size_t cur_block) {
     if (to_write == 0)
-        return;
+        return 0;
 
-    void *block =
-        (TFS_UNLIKELY(cur_block > 10)
-             ? (data_block_get(((int *)data_block_get(
-                   inode->i_supplement_block))[cur_block - INODE_DATA_BLOCKS]))
-             : (data_block_get(inode->i_data_block[cur_block])));
+    void *const block = rw_get_block(inode, cur_block);
+
+    if (block == NULL)
+        return -1;
+
     const size_t offset = BLOCK_OFFSET(of_offset);
     const size_t len =
         (to_write + offset) < BLOCK_SIZE ? to_write : (BLOCK_SIZE - offset);
     /* Perform the actual write */
+    /*printf("%p -> %p\n", buffer, block + offset);*/
     memcpy(block + offset, buffer, len);
 
     return write_impl(0, inode, buffer + len, to_write - len, cur_block + 1);
@@ -156,8 +169,9 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         if (data_inode_blocks_alloc(inode, to_write) == -1)
             return -1;
 
-        write_impl(file->of_offset, inode, buffer, to_write,
-                   BLOCK_CURRENT(inode->i_size));
+        if (write_impl(file->of_offset, inode, buffer, to_write,
+                       BLOCK_CURRENT(inode->i_size)) == -1)
+            return -1;
 
         /* The offset associated with the file handle is
          * incremented accordingly */

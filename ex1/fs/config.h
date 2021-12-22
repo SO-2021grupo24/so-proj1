@@ -24,15 +24,12 @@
 #define MAX_FILESIZE                                                           \
     (BLOCK_SIZE * (INODE_DATA_BLOCKS + (BLOCK_SIZE / sizeof(int))))
 
-#define TFS_PREDICT(expr, value, _probability)                                 \
-    __builtin_expect_with_probability(expr, value, _probability)
-
-#define TFS_PREDICT_TRUE(expr, probability)                                    \
-    TFS_PREDICT(!!(expr), 1, probability)
-#define TFS_PREDICT_FALSE(expr, probability)                                   \
-    TFS_PREDICT(!!(expr), 0, probability)
-
-#define TFS_LIKELY(expr) TFS_PREDICT_TRUE(expr, 1.0)
-#define TFS_UNLIKELY(expr) TFS_PREDICT_FALSE(expr, 1.0)
+#if defined(__GNUC__) || defined(__clang__)
+#define TFS_LIKELY(expr) __builtin_expect(!!(expr), 1)
+#define TFS_UNLIKELY(expr) __builtin_expect(!!(expr), 0)
+#else
+#define TFS_LIKELY(expr) (expr)
+#define TFS_UNLIKELY(expr) (expr)
+#endif
 
 #endif // CONFIG_H

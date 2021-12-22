@@ -76,11 +76,14 @@ static inline int alloc_inside_supplement_block(inode_t *inode,
                                                 size_t request_blocks) {
     /* Allocate index block. */
     if (inode->i_supplement_block == UNALLOCATED_BLOCK)
-        if ((inode->i_supplement_block = data_block_alloc()) == -1)
-            return -1;
+        inode->i_supplement_block = data_block_alloc();
 
-    return blocks_alloc_impl(data_block_get(inode->i_supplement_block) +
-                                 cur_blocks - INODE_DATA_BLOCKS,
+    int *const supplement_block =
+        (int *)data_block_get(inode->i_supplement_block);
+    if (supplement_block == NULL)
+        return -1;
+
+    return blocks_alloc_impl(supplement_block + cur_blocks - INODE_DATA_BLOCKS,
                              request_blocks);
 }
 
@@ -237,6 +240,7 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
     for (size_t i = 0; i < MAX_DIR_ENTRIES; i++) {
         if (dir_entry[i].d_inumber == -1) {
             dir_entry[i].d_inumber = sub_inumber;
+            /*printf("name @ %p\n", dir_entry[i].d_name);*/
             strncpy(dir_entry[i].d_name, sub_name, MAX_FILE_NAME - 1);
             dir_entry[i].d_name[MAX_FILE_NAME - 1] = 0;
             return 0;
@@ -268,11 +272,12 @@ int find_in_dir(int inumber, char const *sub_name) {
 
     /* Iterates over the directory entries looking for one that has the target
      * name */
-    for (int i = 0; i < MAX_DIR_ENTRIES; i++)
+    for (int i = 0; i < MAX_DIR_ENTRIES; i++) {
         if ((dir_entry[i].d_inumber != -1) &&
             (strncmp(dir_entry[i].d_name, sub_name, MAX_FILE_NAME) == 0)) {
             return dir_entry[i].d_inumber;
         }
+    }
 
     return -1;
 }
@@ -322,7 +327,7 @@ int data_inode_blocks_alloc(inode_t *inode, size_t size) {
     const size_t cur_blocks = BLOCK_SIZEOF(inode->i_size);
     const size_t request_blocks = total_blocks - cur_blocks;
 
-    if (!request_blocks)
+    if (request_blocks == 0)
         return 0;
 
     return (TFS_UNLIKELY(total_blocks > INODE_DATA_BLOCKS)
