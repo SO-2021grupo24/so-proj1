@@ -96,16 +96,12 @@ int tfs_open(char const *name, int flags) {
 
 int tfs_close(int fhandle) { return remove_from_open_file_table(fhandle); }
 
-static void *rw_get_block(inode_t *inode, size_t cur_block) {
-    if (TFS_LIKELY(cur_block < INODE_DATA_BLOCKS))
-        return data_block_get(inode->i_data_block[cur_block]);
-
-    const int *const index_blk =
-        (int *)data_block_get(inode->i_supplement_block);
-    if (index_blk == NULL)
+static inline void *rw_get_block(inode_t *inode, size_t cur_block) {
+    const int idx = data_block_get_current_index(inode, cur_block);
+    if (idx == -1)
         return NULL;
 
-    return data_block_get(index_blk[cur_block - INODE_DATA_BLOCKS]);
+    return data_block_get(idx);
 }
 
 static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
@@ -214,33 +210,30 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 }
 
 int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
-    int f = tfs_open(source_path,
-                     0); // nao ha flag TFS_O_CREATE suponho que seja por o 0?
-    FILE *fd =
-        fopen(dest_path,
-              "w+"); // abrir em write mode com o mais para criar se nao existir
+    const int f = tfs_open(source_path, 0);
+    if (f == -1)
+        return -1;
 
-    char buffer[BLOCK_SIZE]; // nao sei se este e o tamanho maximo do ficheiro,
-                             // maybe? pensei fazer com loop? talvez nao? assim
-                             // se calhar e a maneira certa?
-    int bytes_read = 0;
-    int bytes_written = 0;
+    /* Create file if not present, replace otherwise. */
+    FILE *fd = fopen(dest_path, "w");
 
-    bytes_read =
-        (int)tfs_read(f, buffer, sizeof(buffer) - 1); // typecast para int??????
+    if (fd == NULL)
+        return -1;
+
+    // Use buffer in .bss with maximum filesize.
+    static char buffer[MAX_FILESIZE];
+
+    const ssize_t bytes_read = tfs_read(f, buffer, sizeof(buffer) - 1);
 
     if (bytes_read == -1) {
         return -1;
     }
 
-    buffer[bytes_read] = '\0';
+    const size_t bytes_written = fwrite(buffer, 1, (size_t)bytes_read, fd);
 
-    bytes_written =
-        (int)fwrite(buffer, 1, strlen(buffer), fd); // typecast para int????????
-
-    if (bytes_written == -1) {
+    if (bytes_written != bytes_read) {
         return -1;
     }
 
-    return 0;
+    return fclose(fd);
 }

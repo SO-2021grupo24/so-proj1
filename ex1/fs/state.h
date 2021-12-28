@@ -54,6 +54,7 @@ int find_in_dir(int inumber, char const *sub_name);
 int data_block_alloc();
 int data_block_free(int block_number);
 int data_inode_blocks_alloc(inode_t *inode, size_t size);
+int data_block_get_current_index(const inode_t *inode, size_t cur_block);
 int data_inode_blocks_free(const inode_t *inode);
 void *data_block_get(int block_number);
 

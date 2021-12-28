@@ -335,6 +335,19 @@ int data_inode_blocks_alloc(inode_t *inode, size_t size) {
                 : alloc_inside_inode_blocks)(inode, cur_blocks, request_blocks);
 }
 
+int data_block_get_current_index(const inode_t *inode, size_t cur_block) {
+    if (TFS_LIKELY(cur_block < INODE_DATA_BLOCKS))
+        return inode->i_data_block[cur_block];
+
+    /* Reinterpret as int array. */
+    const int *const index_blk =
+        (int *)data_block_get(inode->i_supplement_block);
+    if (index_blk == NULL)
+        return -1;
+
+    return index_blk[cur_block - INODE_DATA_BLOCKS];
+}
+
 /* Frees all data blocks from an inode
  * Input
  * 	- pointer to an inode
@@ -342,13 +355,17 @@ int data_inode_blocks_alloc(inode_t *inode, size_t size) {
  */
 int data_inode_blocks_free(const inode_t *inode) {
     const size_t blocks = BLOCK_SIZEOF(inode->i_size);
-    for (int i = 0; i < blocks; ++i) {
-        if (data_block_free(inode->i_data_block[i]) == -1) {
-            return -1;
-        }
+    int rc = 0;
+    for (size_t i = 0; i < blocks; ++i) {
+        const int idx = data_block_get_current_index(inode, i);
+        if (idx == -1)
+            rc = -1;
+
+        else if (data_block_free(idx) == -1)
+            rc = -1;
     }
 
-    return 0;
+    return rc;
 }
 
 /* Returns a pointer to the contents of a given block
