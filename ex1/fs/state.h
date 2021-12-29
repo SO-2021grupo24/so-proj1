@@ -62,4 +62,6 @@ int add_to_open_file_table(int inumber, size_t offset);
 int remove_from_open_file_table(int fhandle);
 open_file_entry_t *get_open_file_entry(int fhandle);
 
+void initializes_file_data_blocks(inode_t* inode);
+
 #endif // STATE_H
