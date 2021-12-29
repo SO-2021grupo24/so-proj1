@@ -24,12 +24,4 @@
 #define MAX_FILESIZE                                                           \
     (BLOCK_SIZE * (INODE_DATA_BLOCKS + (BLOCK_SIZE / sizeof(int))))
 
-#if defined(__GNUC__) || defined(__clang__)
-#define TFS_LIKELY(expr) __builtin_expect(!!(expr), 1)
-#define TFS_UNLIKELY(expr) __builtin_expect(!!(expr), 0)
-#else
-#define TFS_LIKELY(expr) (expr)
-#define TFS_UNLIKELY(expr) (expr)
-#endif
-
 #endif // CONFIG_H

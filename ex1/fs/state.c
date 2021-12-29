@@ -330,13 +330,13 @@ int data_inode_blocks_alloc(inode_t *inode, size_t size) {
     if (request_blocks == 0)
         return 0;
 
-    return (TFS_UNLIKELY(total_blocks > INODE_DATA_BLOCKS)
+    return ((total_blocks > INODE_DATA_BLOCKS)
                 ? alloc_inside_supplement_block
                 : alloc_inside_inode_blocks)(inode, cur_blocks, request_blocks);
 }
 
 int data_block_get_current_index(const inode_t *inode, size_t cur_block) {
-    if (TFS_LIKELY(cur_block < INODE_DATA_BLOCKS))
+    if (cur_block < INODE_DATA_BLOCKS)
         return inode->i_data_block[cur_block];
 
     /* Reinterpret as int array. */
@@ -426,16 +426,12 @@ open_file_entry_t *get_open_file_entry(int fhandle) {
     return &open_file_table[fhandle];
 }
 
-void initializes_file_data_blocks(inode_t* inode) {
+void initializes_file_data_blocks(inode_t *inode) {
 
     for (int i = 0; i < INODE_DATA_BLOCKS; i++) { // puts directs blocks to -1
 
         inode->i_data_block[i] = -1;
-
     }
 
-
-
-    inode->i_supplement_block = - 1; // puts indirect block to -1
-
+    inode->i_supplement_block = -1; // puts indirect block to -1
 }
