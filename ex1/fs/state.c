@@ -157,7 +157,7 @@ int inode_create(inode_type n_type) {
             } else {
                 /* In case of a new file, simply sets its size to 0 */
                 inode_table[inumber].i_size = 0;
-                inode_table[inumber].i_data_block[0] = -1;
+                initializes_file_data_blocks(&inode_table[inumber]);
             }
             return inumber;
         }
@@ -424,4 +424,18 @@ open_file_entry_t *get_open_file_entry(int fhandle) {
         return NULL;
     }
     return &open_file_table[fhandle];
+}
+
+void initializes_file_data_blocks(inode_t* inode) {
+
+    for (int i = 0; i < MAX_DIRECT_DATA_BLOCKS; i++) { // puts directs blocks to -1
+
+        inode->i_data_block[i] = -1;
+
+    }
+
+
+
+    inode->i_supplement_block = - 1; // puts indirect block to -1
+
 }
