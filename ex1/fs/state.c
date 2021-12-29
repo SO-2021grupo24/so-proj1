@@ -428,7 +428,7 @@ open_file_entry_t *get_open_file_entry(int fhandle) {
 
 void initializes_file_data_blocks(inode_t* inode) {
 
-    for (int i = 0; i < MAX_DIRECT_DATA_BLOCKS; i++) { // puts directs blocks to -1
+    for (int i = 0; i < INODE_DATA_BLOCKS; i++) { // puts directs blocks to -1
 
         inode->i_data_block[i] = -1;
 
