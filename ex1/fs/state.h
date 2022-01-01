@@ -3,6 +3,8 @@
 
 #include "config.h"
 
+#include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -38,6 +40,12 @@ typedef struct {
     size_t of_offset;
 } open_file_entry_t;
 
+extern pthread_rwlock_t open_file_entries_rw_locks[MAX_OPEN_FILES];
+extern pthread_mutex_t open_file_entries_mutex_locks[MAX_OPEN_FILES];
+
+extern pthread_rwlock_t inode_rw_locks[INODE_TABLE_SIZE];
+extern pthread_mutex_t inode_mutex_locks[INODE_TABLE_SIZE];
+
 #define MAX_DIR_ENTRIES (BLOCK_SIZE / sizeof(dir_entry_t))
 
 void state_init();
@@ -53,15 +61,15 @@ int find_in_dir(int inumber, char const *sub_name);
 
 int data_block_alloc();
 int data_block_free(int block_number);
-int data_inode_blocks_alloc(inode_t *inode, size_t size);
-int data_block_get_current_index(const inode_t *inode, size_t cur_block);
-int data_inode_blocks_free(const inode_t *inode);
+int *data_block_get_current_index_ptr(inode_t *inode, size_t cur_block);
+int data_inode_blocks_free(inode_t *inode);
 void *data_block_get(int block_number);
 
 int add_to_open_file_table(int inumber, size_t offset);
 int remove_from_open_file_table(int fhandle);
-open_file_entry_t *get_open_file_entry(int fhandle);
 
-void initializes_file_data_blocks(inode_t *inode);
+bool is_taken_open_file_table(int fhandle);
+
+open_file_entry_t *get_open_file_entry(int fhandle);
 
 #endif // STATE_H

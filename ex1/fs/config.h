@@ -21,7 +21,8 @@
 
 #define BLOCK_OFFSET(x) (x % BLOCK_SIZE)
 
-#define MAX_FILESIZE                                                           \
-    (BLOCK_SIZE * (INODE_DATA_BLOCKS + (BLOCK_SIZE / sizeof(int))))
+#define MAX_BLOCKS (INODE_DATA_BLOCKS + (BLOCK_SIZE / sizeof(int)))
+
+#define MAX_FILESIZE (BLOCK_SIZE * MAX_BLOCKS)
 
 #endif // CONFIG_H
