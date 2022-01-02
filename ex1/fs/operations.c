@@ -96,9 +96,15 @@ int tfs_open(char const *name, int flags) {
 
 int tfs_close(int fhandle) {
     /* Since writes are individual, we use it to close as well. */
-    pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
+    if (pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]))
+        return -1;
     const int rc = remove_from_open_file_table(fhandle);
-    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
+    if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]))
+        return -1;
+
+    if (pthread_rwlock_destroy(&open_file_entries_rw_locks[fhandle]) != 0)
+        return -1;
+
     return rc;
 }
 
@@ -183,11 +189,12 @@ static ssize_t write_impl(size_t of_offset, inode_t *inode, void const *buffer,
 ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
     open_file_entry_t *file = get_open_file_entry(fhandle);
 
-    if (file == NULL) {
+    if (file == NULL || !is_taken_open_file_table(fhandle)) {
         return -1;
     }
 
-    pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
+    if (pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]) != 0)
+        return -1;
 
     /* In the meantime, tfs_close might have been executed, so we double check.
      */
@@ -203,7 +210,8 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
             return -1;
         }
 
-        pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]);
+        if (pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]) != 0)
+            return -1;
         /* Determine how many bytes to write */
         if (to_write + file->of_offset > MAX_FILESIZE) {
             to_write = MAX_FILESIZE - file->of_offset;
@@ -225,22 +233,25 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
             }
         }
 
-        pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
+        if (pthread_rwlock_unlock(&inode_rw_locks[of_inumber]) != 0)
+            return -1;
         rc = (ssize_t)to_write;
     }
 
-    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
+    if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]) != 0)
+        return -1;
     return rc;
 }
 
 ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     open_file_entry_t *file = get_open_file_entry(fhandle);
 
-    if (file == NULL) {
+    if (file == NULL || !is_taken_open_file_table(fhandle)) {
         return -1;
     }
 
-    pthread_rwlock_rdlock(&open_file_entries_rw_locks[fhandle]);
+    if (pthread_rwlock_rdlock(&open_file_entries_rw_locks[fhandle]) != 0)
+        return -1;
 
     /* In the meantime, tfs_close might have been executed, so we double check.
      */
@@ -255,7 +266,8 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
             return -1;
         }
 
-        pthread_rwlock_rdlock(&inode_rw_locks[of_inumber]);
+        if (pthread_rwlock_rdlock(&inode_rw_locks[of_inumber]) != 0)
+            return -1;
         /* Determine how many bytes to read */
         size_t to_read = inode->i_size - file->of_offset;
         if (to_read > len) {
@@ -275,11 +287,13 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
             file->of_offset += to_read;
         }
 
-        pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
+        if (pthread_rwlock_unlock(&inode_rw_locks[of_inumber]) != 0)
+            return -1;
         rc = (ssize_t)to_read;
     }
 
-    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
+    if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]) != 0)
+        return -1;
     return rc;
 }
 

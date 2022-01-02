@@ -14,7 +14,7 @@ INCLUDES = $(addprefix -I, $(INCLUDE_DIRS))
 SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
-TARGET_EXECS := tests/test1 tests/test2 tests/test3 tests/test4
+TARGET_EXECS := tests/test1 tests/test2 tests/test3 tests/test4 tests/test5
 
 TARGET_EXECS += tests/copy_to_external_simple tests/copy_to_external_errors tests/write_10_blocks_spill tests/write_10_blocks_simple tests/write_more_than_10_blocks_simple
 
@@ -71,6 +71,7 @@ tests/test1: tests/test1.o fs/operations.o fs/state.o
 tests/test2: tests/test2.o fs/operations.o fs/state.o
 tests/test3: tests/test3.o fs/operations.o fs/state.o
 tests/test4: tests/test4.o fs/operations.o fs/state.o
+tests/test5: tests/test5.o fs/operations.o fs/state.o
 tests/copy_to_external_errors: tests/copy_to_external_errors.o fs/operations.o fs/state.o
 tests/copy_to_external_simple: tests/copy_to_external_simple.o fs/operations.o fs/state.o
 tests/write_10_blocks_spill: tests/write_10_blocks_spill.o fs/operations.o fs/state.o
