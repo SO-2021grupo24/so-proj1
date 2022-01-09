@@ -23,6 +23,6 @@
 
 #define MAX_BLOCKS (INODE_DATA_BLOCKS + (BLOCK_SIZE / sizeof(int)))
 
-#define MAX_FILESIZE (BLOCK_SIZE * MAX_BLOCKS)
+#define MAX_FILE_SIZE (BLOCK_SIZE * MAX_BLOCKS)
 
 #endif // CONFIG_H

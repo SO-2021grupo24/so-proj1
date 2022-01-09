@@ -41,7 +41,7 @@ typedef struct {
 } open_file_entry_t;
 
 extern pthread_rwlock_t open_file_entries_rw_locks[MAX_OPEN_FILES];
-extern pthread_mutex_t open_file_entries_mutex_locks[MAX_OPEN_FILES];
+extern pthread_mutex_t file_allocation_lock;
 
 extern pthread_rwlock_t inode_rw_locks[INODE_TABLE_SIZE];
 extern pthread_mutex_t inode_mutex_locks[INODE_TABLE_SIZE];

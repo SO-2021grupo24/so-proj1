@@ -13,6 +13,11 @@ int tfs_init() {
         return -1;
     }
 
+    for (int i = 0; i < MAX_OPEN_FILES; ++i) {
+        if (pthread_rwlock_init(&open_file_entries_rw_locks[i], NULL) != 0)
+            return -1;
+    }
+
     return 0;
 }
 
@@ -75,11 +80,13 @@ int tfs_open(char const *name, int flags) {
         if (inum == -1) {
             return -1;
         }
+
         /* Add entry in the root directory */
         if (add_dir_entry(ROOT_DIR_INUM, inum, name + 1) == -1) {
             inode_delete(inum);
             return -1;
         }
+
         offset = 0;
     } else {
         return -1;
@@ -100,9 +107,6 @@ int tfs_close(int fhandle) {
         return -1;
     const int rc = remove_from_open_file_table(fhandle);
     if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]))
-        return -1;
-
-    if (pthread_rwlock_destroy(&open_file_entries_rw_locks[fhandle]) != 0)
         return -1;
 
     return rc;
@@ -213,8 +217,8 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         if (pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]) != 0)
             return -1;
         /* Determine how many bytes to write */
-        if (to_write + file->of_offset > MAX_FILESIZE) {
-            to_write = MAX_FILESIZE - file->of_offset;
+        if (to_write + file->of_offset > MAX_FILE_SIZE) {
+            to_write = MAX_FILE_SIZE - file->of_offset;
         }
 
         if (to_write > 0) {
@@ -309,7 +313,7 @@ int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
         return -1;
 
     // Use buffer in .bss with maximum filesize.
-    static char buffer[MAX_FILESIZE];
+    static char buffer[MAX_FILE_SIZE];
 
     const ssize_t bytes_read = tfs_read(f, buffer, sizeof(buffer) - 1);
 
