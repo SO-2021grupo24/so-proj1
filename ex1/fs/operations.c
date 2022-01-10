@@ -112,82 +112,127 @@ int tfs_close(int fhandle) {
     return rc;
 }
 
-static inline void *r_get_block(inode_t *inode, size_t cur_block) {
-    const int idx = *data_block_get_current_index_ptr(inode, cur_block);
-    /* This should leave... */
-    if (idx == -1)
-        return NULL;
-
-    return data_block_get(idx);
-}
-
-static inline void *w_get_block(inode_t *inode, size_t cur_block) {
-    if (cur_block == INODE_DATA_BLOCKS &&
-        inode->i_supplement_block == UNALLOCATED_BLOCK) {
-        const int new_block = data_block_alloc();
-        if (new_block == -1)
-            return NULL;
-
-        inode->i_supplement_block = new_block;
-        *(int *)data_block_get(new_block) = -1;
-    }
-
-    int *const idx = data_block_get_current_index_ptr(inode, cur_block);
-
-    if (*idx == -1) {
-        const int new_block = data_block_alloc();
-
-        if (new_block == -1)
-            return NULL;
-
-        *idx = new_block;
-        /* Sliding the mark. */
-        if (cur_block != INODE_DATA_BLOCKS - 1 && cur_block != MAX_BLOCKS - 1)
-            *(idx + 1) = -1;
-    }
-
-    return data_block_get(*idx);
-}
-
 static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
-                         size_t to_read, size_t cur_block) {
-    if (to_read == 0)
+                         size_t to_read) {
+    if (to_read == 0) {
         return 0;
+    }
 
-    void *const block = r_get_block(inode, cur_block);
+    int starting_block_to_read = current_block(of_offset);
+    int last_block_to_read = final_block(of_offset, to_read);
+    size_t block_offset = BLOCK_OFFSET(of_offset);
 
-    if (block == NULL)
+    // reads the first
+    int block_number = get_block_number(inode, starting_block_to_read);
+    if (block_number == -1) {
         return -1;
+    }
+    void *real_block = data_block_get(block_number);
+    if (real_block == NULL) {
+        return -1;
+    }
 
-    const size_t offset = BLOCK_OFFSET(of_offset);
-    const size_t len =
-        (to_read + offset) < BLOCK_SIZE ? to_read : (BLOCK_SIZE - offset);
-    /* Perform the actual read */
-    memcpy(buffer, block + offset, len);
+    if (starting_block_to_read == last_block_to_read) {
+        memcpy(buffer, real_block + block_offset, to_read);
+        return 0;
+    }
 
-    return read_impl(of_offset + len, inode, buffer + len, to_read - len,
-                     cur_block + 1);
+    memcpy(buffer, real_block + block_offset, BLOCK_SIZE - block_offset);
+
+    // reads medium blocks
+    size_t buffer_offset = BLOCK_SIZE - block_offset;
+    for (int block = starting_block_to_read + 1; block < last_block_to_read;
+         block++) {
+        block_number = get_block_number(inode, block);
+        if (block_number == -1) {
+            return -1;
+        }
+
+        real_block = data_block_get(block_number);
+        if (real_block == NULL) {
+            return -1;
+        }
+        memcpy(buffer + buffer_offset, real_block, BLOCK_SIZE);
+        buffer_offset += BLOCK_SIZE;
+    }
+
+    // reads last block
+    block_number = get_block_number(inode, last_block_to_read);
+    if (block_number == -1) {
+        return -1;
+    }
+
+    real_block = data_block_get(block_number);
+    if (real_block == NULL) {
+        return -1;
+    }
+
+    size_t last_read = to_read - buffer_offset;
+    memcpy(buffer + buffer_offset, real_block, last_read);
+
+    return 0;
 }
 
 static ssize_t write_impl(size_t of_offset, inode_t *inode, void const *buffer,
-                          size_t to_write, size_t cur_block) {
+                          size_t to_write) {
     if (to_write == 0)
         return 0;
 
-    void *const block = w_get_block(inode, cur_block);
-
-    if (block == NULL)
+    // makes the memory necessary to make the writing possible
+    if (allocate_blocks(inode, of_offset, to_write)) {
         return -1;
+    }
 
-    const size_t offset = BLOCK_OFFSET(of_offset);
-    const size_t len =
-        (to_write + offset) < BLOCK_SIZE ? to_write : (BLOCK_SIZE - offset);
-    /* Perform the actual write */
-    /*printf("%p -> %p\n", buffer, block + offset);*/
-    memcpy(block + offset, buffer, len);
+    int starting_block = current_block(of_offset);
+    int last_block_to_write = final_block(of_offset, to_write);
+    size_t block_offset = BLOCK_OFFSET(of_offset);
 
-    return write_impl(of_offset + len, inode, buffer + len, to_write - len,
-                      cur_block + 1);
+    // writes in the first block
+    int block_number = get_block_number(inode, starting_block);
+    if (block_number == -1) {
+        return -1;
+    }
+
+    if (starting_block == last_block_to_write) {
+        // changes the meta data of the file
+        if (fill_block(block_number, buffer, block_offset, to_write) == -1) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+    if (fill_block(block_number, buffer, block_offset,
+                   BLOCK_SIZE - block_offset) == -1) {
+        return -1;
+    }
+
+    size_t buffer_offset = BLOCK_SIZE - block_offset;
+
+    // writes mid blocks
+    for (int block = starting_block + 1; block < last_block_to_write; block++) {
+        block_number = get_block_number(inode, block);
+        if (block_number == -1) {
+            return -1;
+        }
+        if (fill_block(block_number, buffer + buffer_offset, 0, BLOCK_SIZE)) {
+            return -1;
+        }
+        buffer_offset += BLOCK_SIZE;
+    }
+
+    // writes last block
+    block_number = get_block_number(inode, last_block_to_write);
+    if (block_number == -1) {
+        return -1;
+    }
+
+    const size_t total_write = to_write - buffer_offset;
+    if (fill_block(block_number, buffer + buffer_offset, 0, total_write)) {
+        return -1;
+    }
+
+    return 0;
 }
 
 ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
@@ -222,8 +267,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         }
 
         if (to_write > 0) {
-            if (write_impl(file->of_offset, inode, buffer, to_write,
-                           BLOCK_CURRENT(file->of_offset)) == -1) {
+            if (write_impl(file->of_offset, inode, buffer, to_write) == -1) {
                 pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
                 pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
                 return -1;
@@ -279,8 +323,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         }
 
         if (to_read > 0) {
-            if (read_impl(file->of_offset, inode, buffer, to_read,
-                          BLOCK_CURRENT(file->of_offset)) == -1) {
+            if (read_impl(file->of_offset, inode, buffer, to_read) == -1) {
                 pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
                 pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
                 return -1;

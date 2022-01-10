@@ -25,8 +25,8 @@ typedef enum { T_FILE, T_DIRECTORY } inode_type;
 typedef struct {
     inode_type i_node_type;
     size_t i_size;
-    int i_supplement_block;
-    int i_data_block[INODE_DATA_BLOCKS];
+    int i_indirect_data_block;
+    int i_direct_data_blocks[MAX_DIRECT_DATA_BLOCKS_PER_FILE];
     /* in a real FS, more fields would exist here */
 } inode_t;
 
@@ -51,6 +51,20 @@ extern pthread_mutex_t inode_mutex_locks[INODE_TABLE_SIZE];
 void state_init();
 void state_destroy();
 
+inline int blocks_allocated(inode_t *inode) {
+    return (int)BLOCK_SIZEOF(inode->i_size);
+}
+
+inline int rw_total_blocks(size_t offset, size_t to_rw) {
+    return (int)BLOCK_SIZEOF(offset + to_rw);
+}
+
+inline int final_block(size_t offset, size_t to_rw) {
+    return rw_total_blocks(offset, to_rw) - 1;
+}
+
+inline int current_block(size_t offset) { return (int)BLOCK_CURRENT(offset); }
+
 int inode_create(inode_type n_type);
 int inode_delete(int inumber);
 inode_t *inode_get(int inumber);
@@ -61,9 +75,13 @@ int find_in_dir(int inumber, char const *sub_name);
 
 int data_block_alloc();
 int data_block_free(int block_number);
-int *data_block_get_current_index_ptr(inode_t *inode, size_t cur_block);
 int data_inode_blocks_free(inode_t *inode);
 void *data_block_get(int block_number);
+
+int allocate_blocks(inode_t *inode, size_t file_offset, size_t to_write);
+int get_block_number(inode_t *inode, int block_order);
+int fill_block(int block_number, const void *buffer, size_t block_offset,
+               size_t to_write);
 
 int add_to_open_file_table(int inumber, size_t offset);
 int remove_from_open_file_table(int fhandle);

@@ -105,10 +105,10 @@ static inline void initializes_file_data_blocks(inode_t *inode) {
     // puts directs blocks to UNALLOCATED_BLOCK (start at 0)
     // will slide UNALLOCATED_BLOCK through them to detect when we need to
     // allocate
-    inode->i_data_block[0] = UNALLOCATED_BLOCK;
+    inode->i_direct_data_blocks[0] = UNALLOCATED_BLOCK;
 
     // puts indirect block to UNALLOCATED_BLOCK
-    inode->i_supplement_block = UNALLOCATED_BLOCK;
+    inode->i_indirect_data_block = UNALLOCATED_BLOCK;
 }
 
 /*
@@ -130,7 +130,7 @@ int inode_create(inode_type n_type) {
             freeinode_ts[inumber] = TAKEN;
             insert_delay(); // simulate storage access delay (to i-node)
             inode_table[inumber].i_node_type = n_type;
-            inode_table[inumber].i_supplement_block = UNALLOCATED_BLOCK;
+            inode_table[inumber].i_indirect_data_block = UNALLOCATED_BLOCK;
 
             // inode_rw_locks[inumber] = PTHREAD_RWLOCK_INITIALIZER;
             if (n_type == T_DIRECTORY) {
@@ -143,7 +143,7 @@ int inode_create(inode_type n_type) {
                 }
 
                 inode_table[inumber].i_size = BLOCK_SIZE;
-                inode_table[inumber].i_data_block[0] = b;
+                inode_table[inumber].i_direct_data_blocks[0] = b;
 
                 dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(b);
                 if (dir_entry == NULL ||
@@ -243,8 +243,8 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
     }
 
     /* Locates the block containing the directory's entries */
-    dir_entry_t *dir_entry =
-        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[0]);
+    dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(
+        inode_table[inumber].i_direct_data_blocks[0]);
     if (dir_entry == NULL) {
         return -1;
     }
@@ -277,8 +277,8 @@ int find_in_dir(int inumber, char const *sub_name) {
     }
 
     /* Locates the block containing the directory's entries */
-    dir_entry_t *dir_entry =
-        (dir_entry_t *)data_block_get(inode_table[inumber].i_data_block[0]);
+    dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(
+        inode_table[inumber].i_direct_data_blocks[0]);
     if (dir_entry == NULL) {
         return -1;
     }
@@ -339,32 +339,30 @@ int data_block_free(int block_number) {
     return 0;
 }
 
-int *data_block_get_current_index_ptr(inode_t *inode, size_t cur_block) {
-    if (cur_block < INODE_DATA_BLOCKS)
-        return &inode->i_data_block[cur_block];
-
-    /* Reinterpret as int array. */
-    int *const index_blk = (int *)data_block_get(inode->i_supplement_block);
-
-    return &index_blk[cur_block - INODE_DATA_BLOCKS];
-}
-
 /* Frees all data blocks from an inode
  * Input
  * 	- pointer to an inode
  * Returns: 0 if success, -1 otherwise
  */
 int data_inode_blocks_free(inode_t *inode) {
+    const int last_block_allocated = blocks_allocated(inode);
 
-    const size_t blocks = BLOCK_SIZEOF(inode->i_size);
     int rc = 0;
-    for (size_t i = 0; i < blocks; ++i) {
-        const int idx = *data_block_get_current_index_ptr(inode, i);
-        if (idx == -1)
+    for (int block = last_block_allocated; block > 0; block--) {
+        int block_number = get_block_number(inode, block);
+        if (block_number == -1) {
             rc = -1;
+        }
 
-        else if (data_block_free(idx) == -1)
+        if (data_block_free(block_number) == -1) {
             rc = -1;
+        }
+
+        if (block == MAX_DIRECT_DATA_BLOCKS_PER_FILE) {
+            if (data_block_free(inode->i_indirect_data_block) == -1) {
+                rc = -1;
+            }
+        }
     }
 
     return rc;
@@ -382,6 +380,96 @@ void *data_block_get(int block_number) {
 
     insert_delay(); // simulate storage access delay to block
     return &fs_data[block_number * BLOCK_SIZE];
+}
+
+static int allocate_per_block(int *block) {
+    int block_number = data_block_alloc();
+    if (block_number == -1) {
+        return -1;
+    }
+
+    *block = block_number;
+    return block_number;
+}
+
+static int allocate_per_block_more(int indirect_block, int idx) {
+    int *indirect_data_block = (int *)data_block_get(indirect_block);
+    if (indirect_data_block == NULL) {
+        return -1;
+    }
+
+    return allocate_per_block(&indirect_data_block[idx]);
+}
+
+static int allocate_blocks_impl(inode_t *inode, int starting_block,
+                                int last_block) {
+    for (int block = starting_block; block <= last_block; block++) {
+        if (block < MAX_DIRECT_DATA_BLOCKS_PER_FILE) {
+            if (allocate_per_block(&inode->i_direct_data_blocks[block]) == -1) {
+                return -1;
+            }
+        }
+
+        else if (block == MAX_DIRECT_DATA_BLOCKS_PER_FILE) {
+            int block_number;
+            if ((block_number =
+                     allocate_per_block(&inode->i_indirect_data_block)) == -1) {
+                return -1;
+            }
+
+            if (allocate_per_block_more(block_number, 0) == -1)
+                return -1;
+        }
+
+        else if (allocate_per_block_more(
+                     inode->i_indirect_data_block,
+                     block - MAX_DIRECT_DATA_BLOCKS_PER_FILE) == -1)
+            return -1;
+    }
+
+    return 0;
+}
+
+int allocate_blocks(inode_t *inode, size_t file_offset, size_t to_write) {
+    const int block = final_block(file_offset, to_write);
+
+    if (blocks_allocated(inode) < rw_total_blocks(file_offset, to_write)) {
+        return allocate_blocks_impl(inode, blocks_allocated(inode), block);
+    }
+
+    return 0;
+}
+
+int get_block_number(inode_t *inode, int block_order) {
+    if (block_order >= MAX_BLOCKS) {
+        return -1;
+    }
+
+    if (block_order < MAX_DIRECT_DATA_BLOCKS_PER_FILE) {
+        return inode->i_direct_data_blocks[block_order];
+    }
+
+    const int *const indirect_data_block =
+        (int *)data_block_get(inode->i_indirect_data_block);
+
+    if (indirect_data_block == NULL) {
+        return -1;
+    }
+
+    return indirect_data_block[block_order - MAX_DIRECT_DATA_BLOCKS_PER_FILE];
+}
+
+int fill_block(int block_number, const void *buffer, size_t block_offset,
+               size_t to_write) {
+    void *block = data_block_get(block_number);
+
+    if (block == NULL) {
+        return -1;
+    }
+
+    memcpy(block + block_offset, buffer, to_write);
+
+    return 0;
 }
 
 /* Add new entry to the open file table
