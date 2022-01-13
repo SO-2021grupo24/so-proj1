@@ -42,9 +42,10 @@ typedef struct {
 
 extern pthread_rwlock_t open_file_entries_rw_locks[MAX_OPEN_FILES];
 extern pthread_mutex_t file_allocation_lock;
+extern pthread_mutex_t dir_entry_lock;
 
 extern pthread_rwlock_t inode_rw_locks[INODE_TABLE_SIZE];
-extern pthread_mutex_t inode_mutex_locks[INODE_TABLE_SIZE];
+extern pthread_rwlock_t freeinode_ts_lock;
 
 #define MAX_DIR_ENTRIES (BLOCK_SIZE / sizeof(dir_entry_t))
 
@@ -65,9 +66,11 @@ inline int final_block(size_t offset, size_t to_rw) {
 
 inline int current_block(size_t offset) { return (int)BLOCK_CURRENT(offset); }
 
+int inode_init_locks();
 int inode_create(inode_type n_type);
 int inode_delete(int inumber);
 inode_t *inode_get(int inumber);
+bool is_free_inode(int inumber);
 
 int clear_dir_entry(int inumber, int sub_inumber);
 int add_dir_entry(int inumber, int sub_inumber, char const *sub_name);
@@ -83,6 +86,7 @@ int get_block_number(inode_t *inode, int block_order);
 int fill_block(int block_number, const void *buffer, size_t block_offset,
                size_t to_write);
 
+int open_file_init_locks();
 int add_to_open_file_table(int inumber, size_t offset);
 int remove_from_open_file_table(int fhandle);
 
