@@ -77,15 +77,17 @@ int main() {
     assert(f3 != -1);
 
     const char *const s2 = "oi";
+
     r = tfs_write(f2, s2, strlen(s2));
     assert(r == strlen(s2));
     const char *const s3 = "miga";
     r = tfs_write(f3, s2, strlen(s2));
     assert(r == strlen(s2));
 
+
     r = tfs_write(f2, s3, strlen(s3));
     assert(r == strlen(s3));
-
+ 
     assert(tfs_close(f2) != -1);
     assert(tfs_close(f3) != -1);
 

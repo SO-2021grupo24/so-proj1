@@ -55,17 +55,12 @@ int tfs_open(char const *name, int flags) {
     inum = tfs_lookup(name);
     if (inum >= 0) {
         /* The file already exists */
-        if (pthread_rwlock_wrlock(&inode_rw_locks[inum]) != 0)
-            return -1;
-
-        /* Check if inode was not deleted meanwhile... */
-        if (is_free_inode(inum)) {
-            pthread_rwlock_unlock(&inode_rw_locks[inum]);
-            return -1;
-        }
+        pthread_rwlock_wrlock(&inode_rw_locks[inum]);
 
         inode_t *inode = inode_get(inum);
-        if (inode == NULL) {
+        /* Null inode / deleted meanwhile ---> not successful open. */
+        if (inode == NULL || inode->i_node_type == T_PREV_USED) {
+            pthread_rwlock_unlock(&inode_rw_locks[inum]);
             return -1;
         }
 
@@ -73,6 +68,7 @@ int tfs_open(char const *name, int flags) {
         if (flags & TFS_O_TRUNC) {
             if (inode->i_size > 0) {
                 if (data_inode_blocks_free(inode) == -1) {
+                    pthread_rwlock_unlock(&inode_rw_locks[inum]);
                     return -1;
                 }
                 inode->i_size = 0;
@@ -85,8 +81,7 @@ int tfs_open(char const *name, int flags) {
             offset = 0;
         }
 
-        if (pthread_rwlock_unlock(&inode_rw_locks[inum]) != 0)
-            return -1;
+        pthread_rwlock_unlock(&inode_rw_locks[inum]);
     } else if (flags & TFS_O_CREAT) {
         /* The file doesn't exist; the flags specify that it should be created*/
         /* Create inode */
@@ -117,11 +112,9 @@ int tfs_open(char const *name, int flags) {
 
 int tfs_close(int fhandle) {
     /* Since writes are individual, we use it to close as well. */
-    if (pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]))
-        return -1;
+    pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
     const int rc = remove_from_open_file_table(fhandle);
-    if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]))
-        return -1;
+    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
 
     return rc;
 }
@@ -263,8 +256,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         return -1;
     }
 
-    if (pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]) != 0)
-        return -1;
+    pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
 
     /* In the meantime, tfs_close might have been executed, so we double check.
      */
@@ -272,8 +264,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
     if (is_taken_open_file_table(fhandle)) {
         const int of_inumber = file->of_inumber;
 
-        if (pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]) != 0)
-            return -1;
+        pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]);
 
         /* From the open file table entry, we get the inode */
         inode_t *inode = inode_get(of_inumber);
@@ -304,13 +295,11 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
             }
         }
 
-        if (pthread_rwlock_unlock(&inode_rw_locks[of_inumber]) != 0)
-            return -1;
+        pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
         rc = (ssize_t)to_write;
     }
 
-    if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]) != 0)
-        return -1;
+    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
     return rc;
 }
 
@@ -321,8 +310,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         return -1;
     }
 
-    if (pthread_rwlock_rdlock(&open_file_entries_rw_locks[fhandle]) != 0)
-        return -1;
+    pthread_rwlock_rdlock(&open_file_entries_rw_locks[fhandle]);
 
     /* In the meantime, tfs_close might have been executed, so we double check.
      */
@@ -331,8 +319,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         const int of_inumber = file->of_inumber;
 
         /* From the open file table entry, we get the inode */
-        if (pthread_rwlock_rdlock(&inode_rw_locks[of_inumber]) != 0)
-            return -1;
+        pthread_rwlock_rdlock(&inode_rw_locks[of_inumber]);
 
         inode_t *inode = inode_get(of_inumber);
         if (inode == NULL) {
@@ -359,13 +346,11 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
             file->of_offset += to_read;
         }
 
-        if (pthread_rwlock_unlock(&inode_rw_locks[of_inumber]) != 0)
-            return -1;
+        pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
         rc = (ssize_t)to_read;
     }
 
-    if (pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]) != 0)
-        return -1;
+    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
     return rc;
 }
 
