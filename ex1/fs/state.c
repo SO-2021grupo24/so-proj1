@@ -35,6 +35,10 @@ pthread_mutex_t dir_entry_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Single mutex to synchronize accesses to free_open_file_entries table. */
 pthread_mutex_t open_file_table_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* Single mutex to synchronize access to the buffer used for
+ * tfs_copy_to_external_fs. */
+pthread_mutex_t aux_buffer_mtx = PTHREAD_MUTEX_INITIALIZER;
+
 /* Rwlock for inodes. */
 pthread_rwlock_t inode_rw_locks[INODE_TABLE_SIZE];
 
@@ -122,7 +126,6 @@ int init_locks() {
         if (pthread_rwlock_init(&inode_rw_locks[i], NULL) != 0) {
             return -1;
         }
-
     }
 
     for (int i = 0; i < MAX_OPEN_FILES; ++i) {
@@ -134,11 +137,14 @@ int init_locks() {
 
     if (pthread_mutex_init(&file_allocation_lock, NULL) != 0)
         return -1;
-    
+
     if (pthread_mutex_init(&freeinode_ts_lock, NULL) != 0)
         return -1;
 
     if (pthread_mutex_init(&dir_entry_lock, NULL) != 0)
+        return -1;
+
+    if (pthread_mutex_init(&aux_buffer_mtx, NULL) != 0)
         return -1;
 
     if (pthread_mutex_init(&open_file_table_lock, NULL) != 0)
@@ -162,9 +168,9 @@ int inode_create(inode_type n_type) {
 
         /* Modifying inode. */
         pthread_rwlock_wrlock(&inode_rw_locks[inumber]);
-       
-        /* The inode is being created, so we don't check if it could have been deleted
-         * meanwhile... */
+
+        /* The inode is being created, so we don't check if it could have been
+         * deleted meanwhile... */
 
         /* Using the bytemap resource. */
         pthread_mutex_lock(&freeinode_ts_lock);
@@ -175,7 +181,7 @@ int inode_create(inode_type n_type) {
             freeinode_ts[inumber] = TAKEN;
 
             insert_delay(); // simulate storage access delay (to i-node)
-            
+
             inode_table[inumber].i_node_type = n_type;
             inode_table[inumber].i_indirect_data_block = UNALLOCATED_BLOCK;
 
@@ -202,7 +208,7 @@ int inode_create(inode_type n_type) {
                     pthread_rwlock_unlock(&inode_rw_locks[inumber]);
                     return -1;
                 }
-               
+
                 pthread_mutex_unlock(&freeinode_ts_lock);
                 pthread_rwlock_unlock(&inode_rw_locks[inumber]);
 
@@ -212,17 +218,17 @@ int inode_create(inode_type n_type) {
             } else {
                 /* In case of a new file, simply sets its size to 0 */
                 pthread_mutex_unlock(&freeinode_ts_lock);
-                
+
                 inode_table[inumber].i_size = 0;
                 initializes_file_data_blocks(&inode_table[inumber]);
-                
+
                 pthread_rwlock_unlock(&inode_rw_locks[inumber]);
             }
 
             return inumber;
-        }
-        else pthread_mutex_unlock(&freeinode_ts_lock);
-       
+        } else
+            pthread_mutex_unlock(&freeinode_ts_lock);
+
         /* Release current inode and continue this loop. */
         pthread_rwlock_unlock(&inode_rw_locks[inumber]);
     }
@@ -240,12 +246,12 @@ int inode_delete(int inumber) {
     insert_delay();
     insert_delay();
 
-    if(!valid_inumber(inumber))
+    if (!valid_inumber(inumber))
         return -1;
 
     /* Inode operation, aquire imediately. */
     pthread_rwlock_wrlock(&inode_rw_locks[inumber]);
-   
+
     /* Inode is being deleted. Following operations in the rw won't
      * work except creating a new inode with the same inumber. */
 
@@ -269,7 +275,7 @@ int inode_delete(int inumber) {
     /* In case it was previously being used and we want to check if
      * another thread deleted the inode. */
     inode->i_node_type = T_PREV_USED;
-    
+
     initializes_file_data_blocks(inode);
     pthread_mutex_unlock(&freeinode_ts_lock);
     pthread_rwlock_unlock(&inode_rw_locks[inumber]);
@@ -326,7 +332,7 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
     /* Locates the block containing the directory's entries */
     dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(
         inode_table[inumber].i_direct_data_blocks[0]);
-   
+
     /* Done. */
     pthread_rwlock_unlock(&inode_rw_locks[inumber]);
 
@@ -362,7 +368,7 @@ int add_dir_entry(int inumber, int sub_inumber, char const *sub_name) {
 int find_in_dir(int inumber, char const *sub_name) {
     insert_delay(); // simulate storage access delay to i-node with inumber
 
-    if(!valid_inumber(inumber))
+    if (!valid_inumber(inumber))
         return -1;
 
     /* Getting inode info. */
@@ -375,7 +381,7 @@ int find_in_dir(int inumber, char const *sub_name) {
     /* Locates the block containing the directory's entries */
     dir_entry_t *dir_entry = (dir_entry_t *)data_block_get(
         inode_table[inumber].i_direct_data_blocks[0]);
-   
+
     /* Done. */
     pthread_rwlock_unlock(&inode_rw_locks[inumber]);
 
@@ -636,7 +642,7 @@ int add_to_open_file_table(int inumber, size_t offset) {
  * Returns 0 is success, -1 otherwise
  */
 int remove_from_open_file_table(int fhandle) {
-    if(!valid_file_handle(fhandle))
+    if (!valid_file_handle(fhandle))
         return -1;
 
     pthread_mutex_lock(&open_file_table_lock);
@@ -646,7 +652,7 @@ int remove_from_open_file_table(int fhandle) {
         return -1;
     }
     free_open_file_entries[fhandle] = FREE;
-    
+
     pthread_mutex_unlock(&open_file_table_lock);
     return 0;
 }
@@ -677,4 +683,3 @@ bool is_taken_open_file_table(int fhandle) {
 
     return res;
 }
-

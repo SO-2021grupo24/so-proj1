@@ -84,15 +84,14 @@ int main() {
     r = tfs_write(f3, s2, strlen(s2));
     assert(r == strlen(s2));
 
-
     r = tfs_write(f2, s3, strlen(s3));
     assert(r == strlen(s3));
- 
+
     assert(tfs_close(f2) != -1);
     assert(tfs_close(f3) != -1);
 
     f2 = tfs_open("/lol", 0);
-    
+
     assert(f2 != -1);
 
     r = tfs_read(f2, buffer, strlen(s2) + strlen(s3));

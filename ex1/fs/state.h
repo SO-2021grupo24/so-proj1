@@ -45,6 +45,7 @@ extern pthread_rwlock_t open_file_entries_rw_locks[MAX_OPEN_FILES];
 extern pthread_mutex_t file_allocation_lock;
 extern pthread_mutex_t dir_entry_lock;
 extern pthread_mutex_t open_file_table_lock;
+extern pthread_mutex_t aux_buffer_mtx;
 
 extern pthread_rwlock_t inode_rw_locks[INODE_TABLE_SIZE];
 extern pthread_mutex_t freeinode_ts_lock;

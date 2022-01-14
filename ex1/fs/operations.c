@@ -122,6 +122,10 @@ static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
         return 0;
     }
 
+    if (of_offset > inode->i_size) {
+        return -1;
+    }
+
     int starting_block_to_read = current_block(of_offset);
     int last_block_to_read = final_block(of_offset, to_read);
     size_t block_offset = BLOCK_OFFSET(of_offset);
@@ -137,8 +141,17 @@ static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
     }
 
     if (starting_block_to_read == last_block_to_read) {
+        /*
+        const int f = (int)((char *)(real_block + block_offset))[0];
+        if(f == -1){
+            printf("%p %p %p %d %d %p %lu\n", (void *)real_block, (void
+        *)block_offset, (void *)buffer, block_number, starting_block_to_read,
+        inode, of_offset);
+            __asm__ __volatile__("nop\n");
+        }
+        */
         memcpy(buffer, real_block + block_offset, to_read);
-        return 0;
+        return (ssize_t)to_read;
     }
 
     memcpy(buffer, real_block + block_offset, BLOCK_SIZE - block_offset);
@@ -174,7 +187,7 @@ static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
     size_t last_read = to_read - buffer_offset;
     memcpy(buffer + buffer_offset, real_block, last_read);
 
-    return 0;
+    return (ssize_t)to_read;
 }
 
 static ssize_t write_impl(size_t of_offset, inode_t *inode, void const *buffer,
@@ -262,7 +275,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         const int of_inumber = file->of_inumber;
 
         pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]);
-        
+
         /* From the open file table entry, we get the inode */
         inode_t *inode = inode_get(of_inumber);
 
@@ -313,6 +326,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     /* In the meantime, tfs_close might have been executed, so we double check.
      */
     ssize_t rc = -1;
+    size_t increment = 0;
     if (is_taken_open_file_table(fhandle)) {
         const int of_inumber = file->of_inumber;
 
@@ -320,7 +334,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         pthread_rwlock_rdlock(&inode_rw_locks[of_inumber]);
 
         inode_t *inode = inode_get(of_inumber);
-        
+
         /* Null inode / deleted meanwhile ---> not successful open. */
         if (inode == NULL || inode->i_node_type == T_PREV_USED) {
             pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
@@ -335,15 +349,18 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         }
 
         if (to_read > 0) {
-            if (read_impl(file->of_offset, inode, buffer, to_read) == -1) {
+            const ssize_t read_res =
+                read_impl(file->of_offset, inode, buffer, to_read);
+            if (read_res == -1) {
                 pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
                 pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
                 return -1;
             }
 
+            to_read = (size_t)read_res;
             /* The offset associated with the file handle is
              * incremented accordingly */
-            file->of_offset += to_read;
+            increment = to_read;
         }
 
         pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
@@ -351,6 +368,12 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     }
 
     pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
+
+    if (increment != 0) {
+        pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
+        file->of_offset += increment;
+        pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
+    }
     return rc;
 }
 
@@ -365,6 +388,7 @@ int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
     if (fd == NULL)
         return -1;
 
+    pthread_mutex_lock(&aux_buffer_mtx);
     // Use buffer in .bss with maximum filesize.
     static char buffer[MAX_FILE_SIZE];
 
@@ -376,10 +400,11 @@ int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
 
     const size_t bytes_written = fwrite(buffer, 1, (size_t)bytes_read, fd);
 
+    pthread_mutex_unlock(&aux_buffer_mtx);
+
     if (bytes_written != bytes_read) {
         return -1;
     }
 
     return fclose(fd);
 }
-
