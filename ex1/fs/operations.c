@@ -141,15 +141,6 @@ static ssize_t read_impl(size_t of_offset, inode_t *inode, void *buffer,
     }
 
     if (starting_block_to_read == last_block_to_read) {
-        /*
-        const int f = (int)((char *)(real_block + block_offset))[0];
-        if(f == -1){
-            printf("%p %p %p %d %d %p %lu\n", (void *)real_block, (void
-        *)block_offset, (void *)buffer, block_number, starting_block_to_read,
-        inode, of_offset);
-            __asm__ __volatile__("nop\n");
-        }
-        */
         memcpy(buffer, real_block + block_offset, to_read);
         return (ssize_t)to_read;
     }
@@ -321,7 +312,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         return -1;
     }
 
-    pthread_rwlock_rdlock(&open_file_entries_rw_locks[fhandle]);
+    pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
 
     /* In the meantime, tfs_close might have been executed, so we double check.
      */
@@ -367,13 +358,10 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         rc = (ssize_t)to_read;
     }
 
-    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
-
     if (increment != 0) {
-        pthread_rwlock_wrlock(&open_file_entries_rw_locks[fhandle]);
         file->of_offset += increment;
-        pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
     }
+    pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
     return rc;
 }
 
@@ -405,6 +393,9 @@ int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
     if (bytes_written != bytes_read) {
         return -1;
     }
+
+    if (tfs_close(f) == -1)
+        return -1;
 
     return fclose(fd);
 }

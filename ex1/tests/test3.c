@@ -34,6 +34,8 @@ int main() {
 
     assert(tfs_copy_to_external_fs(path, "./POGGERS!!!!!") != -1);
 
+    remove("./POGGERS!!!!!");
+
     printf("Successful test.\n");
 
     return 0;

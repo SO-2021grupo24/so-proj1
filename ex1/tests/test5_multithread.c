@@ -25,7 +25,7 @@ ct_string_view views[THREAD_AMOUNT] = {
     {.str = "SDFef", .sz = sizeof("SDFef") - 1},
     {.str = "69aa420", .sz = sizeof("69aa420") - 1}};
 
-char read_log[THREAD_AMOUNT][420][9] = {0};
+char read_log[THREAD_AMOUNT][9][9] = {0};
 
 void *t_func_w(void *arg) {
     const handle_index *hidx = (handle_index *)arg;
@@ -34,7 +34,7 @@ void *t_func_w(void *arg) {
     const char *s = views[hidx->index].str;
     const size_t sz = views[hidx->index].sz;
 
-    int amount = 69 + rand() % 420;
+    int amount = 1 + rand() % 9;
     for (int i = 0; i < amount; ++i) {
         const ssize_t sz1 = tfs_write(handle, s, sz);
         assert(sz1 == sz);
@@ -49,7 +49,7 @@ void *t_func_r(void *arg) {
     const int handle = hidx->handle;
     const int idx = hidx->index;
 
-    int amount = 69 + rand() % 420;
+    int amount = 1 + rand() % 9;
     for (int i = 0; i < amount; ++i) {
         /* Reads a string with size between 3 and 8. */
         int to_read = (3 + rand() % 6);
@@ -143,7 +143,7 @@ int str_valid(const char *s) {
 
 int test_read_interference() {
     for (int i = 0; i < THREAD_AMOUNT; ++i) {
-        for (int j = 0; j < 420; ++j) {
+        for (int j = 0; j < 9; ++j) {
             if (*read_log[i][j] != '\0') {
                 if (str_valid(read_log[i][j]) != 0) {
                     printf("str: %s\n", read_log[i][j]);
@@ -188,7 +188,7 @@ int main() {
         assert(pthread_join(t[THREAD_AMOUNT + i], NULL) == 0);
     }
 
-    const int len = 420 * THREAD_AMOUNT * 7;
+    const int len = 9 * THREAD_AMOUNT * 7;
 
     char buf[len];
 
@@ -204,14 +204,13 @@ int main() {
     assert(test_write_interference(buf, (size_t)(sz - 1)) != -1);
 
     buf[len - 1] = '\0';
-    puts(buf);
+    // puts(buf);
 
     assert(test_read_interference() != -1);
 
     assert(tfs_close(f1) != -1);
 
     printf("Successful test.\n");
-    __asm__ __volatile__("nop\n");
 
     return 0;
 }
