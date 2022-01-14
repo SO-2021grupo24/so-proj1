@@ -92,6 +92,8 @@ int main() {
     assert(tfs_close(f3) != -1);
 
     f2 = tfs_open("/lol", 0);
+    
+    assert(f2 != -1);
 
     r = tfs_read(f2, buffer, strlen(s2) + strlen(s3));
     assert(r == strlen(s2) + strlen(s3));

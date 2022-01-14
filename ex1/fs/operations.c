@@ -270,8 +270,8 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         inode_t *inode = inode_get(of_inumber);
 
         if (inode == NULL) {
-            pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
             pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
+            pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
             return -1;
         }
 

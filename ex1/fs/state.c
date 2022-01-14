@@ -191,6 +191,8 @@ int inode_create(inode_type n_type) {
             return inumber;
         }
         else pthread_mutex_unlock(&freeinode_ts_lock);
+        
+        pthread_rwlock_unlock(&inode_rw_locks[inumber]);
     }
     return -1;
 }
@@ -325,6 +327,7 @@ int find_in_dir(int inumber, char const *sub_name) {
 
     pthread_rwlock_rdlock(&inode_rw_locks[inumber]);
     if (inode_table[inumber].i_node_type != T_DIRECTORY) {
+        pthread_rwlock_unlock(&inode_rw_locks[inumber]);
         return -1;
     }
 
