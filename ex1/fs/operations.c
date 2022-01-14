@@ -7,8 +7,8 @@
 int tfs_init() {
     state_init();
 
-    /* Initialize inode locks. */
-    if (inode_init_locks() == -1)
+    /* Initialize locks. */
+    if (init_locks() == -1)
         return -1;
 
     /* create root inode */
@@ -16,9 +16,6 @@ int tfs_init() {
     if (root != ROOT_DIR_INUM) {
         return -1;
     }
-
-    if (open_file_init_locks() == -1)
-        return -1;
 
     return 0;
 }
@@ -265,11 +262,12 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
         const int of_inumber = file->of_inumber;
 
         pthread_rwlock_wrlock(&inode_rw_locks[of_inumber]);
-
+        
         /* From the open file table entry, we get the inode */
         inode_t *inode = inode_get(of_inumber);
 
-        if (inode == NULL) {
+        /* Null inode / deleted meanwhile ---> not successful open. */
+        if (inode == NULL || inode->i_node_type == T_PREV_USED) {
             pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
             pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
             return -1;
@@ -322,9 +320,11 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         pthread_rwlock_rdlock(&inode_rw_locks[of_inumber]);
 
         inode_t *inode = inode_get(of_inumber);
-        if (inode == NULL) {
-            pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
+        
+        /* Null inode / deleted meanwhile ---> not successful open. */
+        if (inode == NULL || inode->i_node_type == T_PREV_USED) {
             pthread_rwlock_unlock(&inode_rw_locks[of_inumber]);
+            pthread_rwlock_unlock(&open_file_entries_rw_locks[fhandle]);
             return -1;
         }
 
@@ -382,3 +382,4 @@ int tfs_copy_to_external_fs(char const *source_path, char const *dest_path) {
 
     return fclose(fd);
 }
+

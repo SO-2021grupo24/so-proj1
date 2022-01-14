@@ -68,7 +68,7 @@ inline int final_block(size_t offset, size_t to_rw) {
 
 inline int current_block(size_t offset) { return (int)BLOCK_CURRENT(offset); }
 
-int inode_init_locks();
+int init_locks();
 int inode_create(inode_type n_type);
 int inode_delete(int inumber);
 inode_t *inode_get(int inumber);
@@ -87,7 +87,6 @@ int get_block_number(inode_t *inode, int block_order);
 int fill_block(int block_number, const void *buffer, size_t block_offset,
                size_t to_write);
 
-int open_file_init_locks();
 int add_to_open_file_table(int inumber, size_t offset);
 int remove_from_open_file_table(int fhandle);
 

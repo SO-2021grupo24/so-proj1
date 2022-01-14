@@ -41,6 +41,8 @@ void *t3_func(void *arg) {
 
 int test_write_interference(char *buf, size_t len) {
     char *cap = buf + len;
+    /* Check if we can iterate string by string in the buffer.
+     * Else, there was interference. */
     while (buf != cap) {
         const size_t cur = (size_t)(cap - buf);
         size_t val;
@@ -83,12 +85,11 @@ int main() {
 
     char buf[len];
 
-    /* Abre outra. */
-    open_file_entry_t *entry = get_open_file_entry(f1);
-    assert(entry != NULL);
+    assert(tfs_close(f1) != -1);
 
-    entry->of_offset = 0;
-    puts("Offset set");
+    /* Abre outra. */
+    f1 = tfs_open(path1, 0);
+
     assert(tfs_read(f1, buf, len - 1) != -1);
 
     /* Testar se não há interferência de escritas. */
