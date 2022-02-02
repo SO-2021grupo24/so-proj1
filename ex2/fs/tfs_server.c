@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -20,6 +21,7 @@ static inline int r_pipe_inform_session(size_t session_id, int res) {
 }
 
 void do_unmount(size_t session_id, bool inform) {
+    int fd = open_session_table[session_id];
     if (pthread_mutex_lock(&open_session_locks[session_id]) != 0) {
         if (inform)
             r_pipe_inform_session(session_id, -1);
@@ -29,17 +31,21 @@ void do_unmount(size_t session_id, bool inform) {
 
     free_open_session_entries[session_id] = FREE;
 
-    if (inform)
-        r_pipe_inform_session(session_id, 0);
+    fail_exit_if(pthread_mutex_unlock(&open_session_locks[session_id]),
+                 E_UNLOCK_SESSION_TABLE_MUTEX);
+
+    printf("Freeing session %lu\n", session_id);
+    if (inform) {
+        r_pipe_inform(fd, 0);
+    }
 
     /* We don't verify close, because we don't think we need to kill the server
      * if a
      * file descriptor goes unused. We'll just let it abort when the table is
      * full... */
-    try_close(open_session_table[session_id]);
-
-    fail_exit_if(pthread_mutex_unlock(&open_session_locks[session_id]),
-                 E_UNLOCK_SESSION_TABLE_MUTEX);
+    // void usleep(unsigned);
+    // usleep(1000*1000);
+    try_close(fd);
 }
 
 static inline void fail_unmount(size_t session_id, const char *msg) {
@@ -63,11 +69,20 @@ static inline void fail_unmount(size_t session_id, const char *msg) {
         }                                                                      \
     } while (0)
 
+#define R_UNMOUNT_IF(arg, session_id)                                          \
+    do {                                                                       \
+        if (arg) {                                                             \
+            do_unmount(session_id, false);                                     \
+            return;                                                            \
+        }                                                                      \
+    } while (0)
+
 #define R_FAIL_REQUEST_IF(arg, session_id, msg)                                \
     do {                                                                       \
         if (arg) {                                                             \
             perror(msg);                                                       \
-            r_pipe_inform_session(session_id, -1);                             \
+            R_UNMOUNT_IF(r_pipe_inform_session(session_id, -1) == -1,          \
+                         session_id);                                          \
             return;                                                            \
         }                                                                      \
     } while (0)
@@ -97,10 +112,9 @@ void server_mount_state(size_t session_id) {
     R_FAIL_IF(fclient == -1, E_OPEN_CLIENT_PIPE);
 
     /* Save the file descriptor. */
-    printf("mount: %lu %lu\n", (long)session_id, (long)fclient);
     open_session_table[session_id] = fclient;
 
-    r_pipe_inform(fclient, (int)session_id);
+    R_UNMOUNT_IF(r_pipe_inform(fclient, (int)session_id) == -1, session_id);
 }
 
 void server_unmount_state(size_t session_id) { do_unmount(session_id, true); }
@@ -124,7 +138,7 @@ void server_open_state(size_t session_id) {
 
     printf("open: %d %lu %lu\n", fd, (long)session_id,
            (long)open_session_table[session_id]);
-    r_pipe_inform_session(session_id, fd);
+    R_UNMOUNT_IF(r_pipe_inform_session(session_id, fd) == -1, session_id);
 }
 
 void server_close_state(size_t session_id) {
@@ -135,7 +149,7 @@ void server_close_state(size_t session_id) {
 
     R_FAIL_REQUEST_IF(tfs_close(fhandle) == -1, session_id, E_READ_PROD_CONS);
 
-    r_pipe_inform_session(session_id, 0);
+    R_UNMOUNT_IF(r_pipe_inform_session(session_id, 0) == -1, session_id);
 }
 
 /* We are considering we only use the size provided by the teachers in the
@@ -160,11 +174,12 @@ void server_read_state(size_t session_id) {
 
     const unsigned was_read =
         (unsigned)tfs_read(fhandle, buffer + sizeof(int), len);
-    printf("read fhandle %d\n", fhandle);
 
     memcpy(buffer, &was_read, sizeof(unsigned));
 
-    try_pipe_write_session(session_id, buffer, was_read + sizeof(unsigned));
+    R_UNMOUNT_IF(try_pipe_write_session(session_id, buffer,
+                                        was_read + sizeof(unsigned)) == -1,
+                 session_id);
 }
 
 /* We are considering we only use the size provided by the teachers in the
@@ -189,15 +204,15 @@ void server_write_state(size_t session_id) {
                       session_id, E_READ_PROD_CONS);
 
     const int was_written = (int)tfs_write(fhandle, buffer, len);
-    printf("write fhandle %d\n", fhandle);
 
-    r_pipe_inform_session(session_id, was_written);
+    R_UNMOUNT_IF(r_pipe_inform_session(session_id, was_written) == -1,
+                 session_id);
 }
 
 void server_shutdown_after_all_closed_state(size_t session_id) {
     r_pipe_inform_session(session_id, tfs_destroy_after_all_closed());
     puts("OYASUMI!~");
-    exit(EXIT_FAILURE);
+    exit(EXIT_SUCCESS);
 }
 
 int main(int argc, char **argv) {

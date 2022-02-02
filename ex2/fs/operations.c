@@ -6,22 +6,22 @@
 #include <string.h>
 
 static pthread_mutex_t single_global_lock;
-static pthread_mutex_t tfs_open_allowed;
+static pthread_mutex_t tfs_exec_allowed;
 
 static pthread_cond_t all_files_were_closed;
 
-static bool can_open = false;
+static bool can_exec = false;
 
 static unsigned int open_files = 0;
 
 int tfs_first_init_sidestep() {
-    if (pthread_mutex_init(&tfs_open_allowed, NULL) != 0)
+    if (pthread_mutex_init(&tfs_exec_allowed, NULL) != 0)
         return -1;
 
     if (pthread_cond_init(&all_files_were_closed, NULL) != 0)
         return -1;
 
-    if (pthread_mutex_lock(&tfs_open_allowed) != 0)
+    if (pthread_mutex_lock(&tfs_exec_allowed) != 0)
         return -1;
 
     return 0;
@@ -41,7 +41,7 @@ int tfs_init() {
     if (pthread_mutex_init(&single_global_lock, 0) != 0)
         return -1;
 
-    if (pthread_mutex_unlock(&tfs_open_allowed) != 0)
+    if (pthread_mutex_unlock(&tfs_exec_allowed) != 0)
         return -1;
 
     /* create root inode */
@@ -50,7 +50,7 @@ int tfs_init() {
         return -1;
     }
 
-    can_open = true;
+    can_exec = true;
     return 0;
 }
 
@@ -80,17 +80,24 @@ int all_files_are_closed_caller() {
 }
 
 int tfs_destroy_after_all_closed() {
-    if (pthread_mutex_lock(&tfs_open_allowed) != 0)
+    if (pthread_mutex_lock(&tfs_exec_allowed))
         return -1;
+    if (!can_exec) {
+        pthread_mutex_unlock(&tfs_exec_allowed);
+        return -1;
+    }
 
-    can_open = false;
+    can_exec = false;
 
     while (open_files != 0) {
-        if (pthread_cond_wait(&all_files_were_closed, &tfs_open_allowed) != 0)
+        if (pthread_cond_wait(&all_files_were_closed, &tfs_exec_allowed) != 0)
             return -1;
     }
 
     if (tfs_destroy() == -1)
+        return -1;
+
+    if (pthread_mutex_unlock(&tfs_exec_allowed))
         return -1;
 
     return 0;
@@ -170,16 +177,15 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 }
 
 int tfs_open(char const *name, int flags) {
-    if (pthread_mutex_lock(&tfs_open_allowed))
-        exit(EXIT_FAILURE);
-    if (!can_open) {
-        if (pthread_mutex_unlock(&tfs_open_allowed))
-            exit(EXIT_FAILURE);
+    if (pthread_mutex_lock(&tfs_exec_allowed))
+        return -1;
+    if (!can_exec) {
+        if (pthread_mutex_unlock(&tfs_exec_allowed))
+            return -1;
         return -1;
     }
-
-    if (pthread_mutex_unlock(&tfs_open_allowed))
-        exit(EXIT_FAILURE);
+    if (pthread_mutex_unlock(&tfs_exec_allowed))
+        return -1;
 
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
@@ -187,13 +193,13 @@ int tfs_open(char const *name, int flags) {
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 
-    if (pthread_mutex_lock(&tfs_open_allowed))
-        exit(EXIT_FAILURE);
+    if (pthread_mutex_lock(&tfs_exec_allowed))
+        return -1;
 
     ++open_files;
 
-    if (pthread_mutex_unlock(&tfs_open_allowed))
-        exit(EXIT_FAILURE);
+    if (pthread_mutex_unlock(&tfs_exec_allowed))
+        return -1;
     return ret;
 }
 
@@ -202,19 +208,20 @@ int tfs_close(int fhandle) {
         return -1;
     int r = remove_from_open_file_table(fhandle);
 
-    if (r == 0 && all_files_are_closed()) {
-        r = pthread_cond_signal(&all_files_were_closed);
-    }
-
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 
-    if (pthread_mutex_lock(&tfs_open_allowed))
+    if (r != 0)
         return -1;
 
-    --open_files;
+    if (pthread_mutex_lock(&tfs_exec_allowed))
+        return -1;
 
-    if (pthread_mutex_unlock(&tfs_open_allowed))
+    if (r == 0 && --open_files == 0) {
+        r = pthread_cond_signal(&all_files_were_closed);
+    }
+
+    if (pthread_mutex_unlock(&tfs_exec_allowed))
         return -1;
 
     return r;

@@ -14,14 +14,15 @@ INCLUDES = $(addprefix -I, $(INCLUDE_DIRS))
 SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
-TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test
+#TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test
+TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test tests/client_server_shutdown_test_CORREIA tests/client_server_simple_test_CORREIA tests/simple_mount_test
 
 # VPATH is a variable used by Makefile which finds *sources* and makes them available throughout the codebase
 # vpath %.h <DIR> tells make to look for header files in <DIR>
 vpath # clears VPATH
 vpath %.h $(INCLUDE_DIRS)
 
-CFLAGS = -std=c11 -D_POSIX_C_SOURCE=200809L
+CFLAGS = -std=c11 -D_POSIX_C_SOURCE=200809L -fsanitize=thread
 CFLAGS += $(INCLUDES)
 
 # Warnings
@@ -41,7 +42,7 @@ else
   CFLAGS += -O3
 endif
 
-LDFLAGS = -pthread
+LDFLAGS = -ltsan -pthread
 
 # A phony target is one that is not really the name of a file
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
@@ -67,6 +68,9 @@ fmt: $(SOURCES) $(HEADERS)
 # make uses a set of default rules, one of which compiles C binaries
 # the CC, LD, CFLAGS and LDFLAGS are used in this rule
 tests/client_server_simple_test: tests/client_server_simple_test.o client/tecnicofs_client_api.o common/common.o
+tests/client_server_simple_test_CORREIA: tests/client_server_simple_test_CORREIA.o client/tecnicofs_client_api.o common/common.o
+tests/simple_mount_test: tests/simple_mount_test.o client/tecnicofs_client_api.o common/common.o
+tests/client_server_shutdown_test_CORREIA: tests/client_server_shutdown_test_CORREIA.o client/tecnicofs_client_api.o common/common.o
 fs/tfs_server: fs/operations.o fs/state.o fs/thread.o common/common.o
 tests/lib_destroy_after_all_closed_test: fs/operations.o fs/state.o common/common.o
 

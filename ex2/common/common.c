@@ -43,13 +43,13 @@ ssize_t try_read(int fd, void *buf, size_t sz) {
 }
 
 ssize_t try_read_all(int fd, void *buf, size_t sz) {
+    return try_read(fd, buf, sz);
     ssize_t bytes = 0;
 
     do {
         ssize_t rc =
             try_read(fd, (void *)((char *)buf + bytes), sz - (size_t)bytes);
 
-        printf("bytes: %ld %lu %ld\n", bytes, sz, rc);
         if (rc == -1)
             return -1;
 

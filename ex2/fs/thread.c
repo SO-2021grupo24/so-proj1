@@ -22,7 +22,9 @@ static prod_cons_t prod_cons[S];
 ssize_t thread_read_data_cons(void *dest, size_t n, size_t session_id) {
     prod_cons_t *const cur_pc = &prod_cons[session_id];
 
+    printf("Locking prodcons... %lu\n", session_id);
     fail_exit_if(pthread_mutex_lock(&cur_pc->mutex), E_LOCK_PROD_CONS_MUTEX);
+    printf("Working prodcons... %lu\n", session_id);
 
     char *const upper = cur_pc->cons_ptr + (n / sizeof(char));
 
@@ -52,7 +54,7 @@ static size_t ipc_sizes[TFS_OP_CODE_AMOUNT] = {
 #undef IPC_ALREADY_READ
 
 void thread_worker_schedule_prod(size_t session_id, char op_code) {
-    printf("OP Code: %hhd\n", op_code);
+    printf("OP Code: %hhd Session: %lu\n", op_code, session_id);
     prod_cons_t *const cur_pc = &prod_cons[session_id];
 
     fail_exit_if(pthread_mutex_lock(&cur_pc->mutex), E_LOCK_PROD_CONS_MUTEX);
@@ -62,6 +64,12 @@ void thread_worker_schedule_prod(size_t session_id, char op_code) {
 
     /* Save op_code at start and the info that has yet to be analyzed after. */
     *cur_pc->prod_ptr++ = op_code;
+
+    if (op_code == TFS_OP_CODE_UNMOUNT) {
+        fail_exit_if(pthread_mutex_unlock(&cur_pc->mutex),
+                     E_UNLOCK_PROD_CONS_MUTEX);
+        return;
+    }
 
     /* Read all the request and save in the thread buffer. */
     ssize_t amount;
@@ -100,6 +108,7 @@ void *thread_wait(void *arg) {
         fail_exit_if(pthread_cond_wait(&threads_cond[session_id],
                                        &threads_mutex[session_id]),
                      E_WAIT_SESSION_CONDVAR);
+        printf("Woke %ld\n", session_id);
 
         char op_code = TFS_OP_CODE_NO_OP;
 
@@ -109,36 +118,44 @@ void *thread_wait(void *arg) {
         case TFS_OP_CODE_NO_OP:
             break;
         case TFS_OP_CODE_MOUNT:
+            printf("mount %lu %lu\n", session_id, pthread_self());
             server_mount_state(session_id);
-            printf("mount\n");
+            printf("mount done %lu\n", session_id);
             break;
         case TFS_OP_CODE_UNMOUNT:
+            printf("unmount %lu\n", session_id);
             server_unmount_state(session_id);
-            printf("unmount\n");
+            printf("unmount done %lu\n", session_id);
             break;
         case TFS_OP_CODE_OPEN:
+            printf("open %lu\n", session_id);
             server_open_state(session_id);
-            printf("open\n");
+            printf("open done %lu\n", session_id);
             break;
         case TFS_OP_CODE_WRITE:
+            printf("write %lu\n", session_id);
             server_write_state(session_id);
-            printf("write\n");
+            printf("write done %lu\n", session_id);
             break;
         case TFS_OP_CODE_READ:
+            printf("read %lu\n", session_id);
             server_read_state(session_id);
-            printf("read\n");
+            printf("read done %lu\n", session_id);
             break;
         case TFS_OP_CODE_CLOSE:
+            printf("close %lu\n", session_id);
             server_close_state(session_id);
-            printf("close\n");
+            printf("close done %lu\n", session_id);
             break;
         case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
+            printf("shutdown %lu\n", session_id);
             server_shutdown_after_all_closed_state(session_id);
-            printf("shutdown\n");
+            printf("shutdown done %lu\n", session_id);
             break;
         default:
             exit(EXIT_FAILURE);
         }
+        printf("Stopping session %lu\n", session_id);
     }
 
     fail_exit_if(pthread_mutex_unlock(&threads_mutex[session_id]),
@@ -171,6 +188,7 @@ static void try_make_pipe_and_send_result_fail_exit_if(bool arg,
 }
 
 static int decide_mount() {
+    // fprintf(stderr, "trying %lu\n", pthread_self());
     for (int i = 0; i < S; i++) {
         try_make_pipe_and_send_result_fail_exit_if(
             pthread_mutex_lock(&open_session_locks[i]) != 0,
@@ -178,6 +196,7 @@ static int decide_mount() {
 
         if (free_open_session_entries[i] == FREE) {
             // open_session_table[i] = fclient;
+            printf("Mount decided id: %d %lu\n", i, pthread_self());
             free_open_session_entries[i] = TAKEN;
 
             try_make_pipe_and_send_result_fail_exit_if(
@@ -185,6 +204,7 @@ static int decide_mount() {
                 E_UNLOCK_SESSION_TABLE_MUTEX);
 
             /* We found an available entry! */
+            // fprintf(stderr, "found %lu\n", pthread_self());
             return i;
         }
 
@@ -194,6 +214,7 @@ static int decide_mount() {
     }
 
     /* We return -1 for error... */
+    // fprintf(stderr, "not found %lu\n", pthread_self());
     return try_make_pipe_and_send_result(-1);
 }
 
@@ -210,13 +231,13 @@ void main_thread_work() {
 
         ssize_t session_id;
 
+        if (op_code == TFS_OP_CODE_NO_OP)
+            continue;
+
         if (op_code == TFS_OP_CODE_MOUNT) {
             if ((session_id = decide_mount()) == -1)
                 continue;
         }
-
-        else if (op_code == TFS_OP_CODE_NO_OP)
-            continue;
 
         else {
             fail_exit_if(try_read_all(req_pipe, &session_id, sizeof(int)) == -1,
@@ -227,8 +248,12 @@ void main_thread_work() {
 
         thread_worker_schedule_prod((unsigned)session_id, op_code);
         printf("Waking session %lu\n", session_id);
+        fail_exit_if(pthread_mutex_lock(&threads_mutex[session_id]),
+                     E_LOCK_SESSION_MUTEX);
         fail_exit_if(pthread_cond_signal(&threads_cond[session_id]),
                      E_SIGNAL_SESSION_CONDVAR);
+        fail_exit_if(pthread_mutex_unlock(&threads_mutex[session_id]),
+                     E_UNLOCK_SESSION_MUTEX);
     }
 }
 
