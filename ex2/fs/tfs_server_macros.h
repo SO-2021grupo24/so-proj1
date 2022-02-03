@@ -8,6 +8,5 @@
 #define S 20
 #define FREE 1
 #define TAKEN 0
-#define TAKEN_IN_USE 2
 
 #endif /*TFS_SERVER_MACROS_H*/

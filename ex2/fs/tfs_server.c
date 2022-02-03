@@ -16,6 +16,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+static char *req_pipe_name;
+
 static inline int get_session_fd(size_t session_id) {
     fail_exit_if(pthread_mutex_lock(&open_session_locks[session_id]),
                  E_LOCK_SESSION_TABLE_MUTEX);
@@ -226,6 +228,7 @@ void server_write_state(size_t session_id) {
 
 void server_shutdown_after_all_closed_state(size_t session_id) {
     r_pipe_inform_session(session_id, tfs_destroy_after_all_closed());
+    unlink(req_pipe_name);
     puts("OYASUMI!~");
     exit(EXIT_SUCCESS);
 }
@@ -254,6 +257,8 @@ int main(int argc, char **argv) {
     fail_exit_if(tfs_init() == -1, "[ERR]: couldn't initialize file system");
 
     signal(SIGPIPE, SIG_IGN);
+
+    req_pipe_name = pipename;
 
     init_threads();
 

@@ -20,6 +20,9 @@ static pthread_cond_t threads_cond[S];
 
 static prod_cons_t prod_cons[S];
 
+// int open_files[S][MAX_OPEN_FILES];
+// size_t open_files_pos = 0;
+
 ssize_t thread_read_data_cons(void *dest, size_t n, size_t session_id) {
     prod_cons_t *const cur_pc = &prod_cons[session_id];
 

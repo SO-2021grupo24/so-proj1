@@ -16,7 +16,7 @@
 #include "tecnicofs_client_errors.h"
 
 int session_id;
-int fclient;
+int fclient = -1;
 int fserver;
 char _client_pipe_path[PATHNAME_MAX_SIZE + 1];
 
@@ -31,8 +31,23 @@ void *memccpy(void *restrict dest, const void *restrict src, int c,
         }                                                                      \
     } while (0)
 
+static void handle_interr() {
+    puts("Interruption!");
+    if (fclient == -1) {
+        fclient = try_open(_client_pipe_path, O_RDONLY);
+        try_close(fclient);
+    }
+    unlink(_client_pipe_path);
+    exit(EXIT_SUCCESS);
+}
+
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
+    signal(SIGINT, handle_interr);
+
     printf("mount %d\n", getpid());
+
+    strncpy(_client_pipe_path, client_pipe_path, PATHNAME_MAX_SIZE);
+
     if (unlink(client_pipe_path) != 0 && errno != ENOENT) {
         fprintf(stderr, "[ERR]: unlink(%s) failed: %s\n", client_pipe_path,
                 strerror(errno));
@@ -64,7 +79,6 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     printf("session %lu\n", (unsigned long)id);
     session_id = id;
 
-    strncpy(_client_pipe_path, client_pipe_path, PATHNAME_MAX_SIZE);
     printf("mount done %d\n", getpid());
     return 0;
 }
