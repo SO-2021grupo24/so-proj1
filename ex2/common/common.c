@@ -58,7 +58,7 @@ ssize_t try_read_all(int fd, void *buf, size_t sz) {
         }
 
         if (rc == -1)
-            return -1 + (fprintf(stderr, "whdu\n") & 0);
+            return -1;
 
         bytes += rc;
     } while (bytes != sz);

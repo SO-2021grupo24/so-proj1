@@ -34,15 +34,24 @@ void *memccpy(void *restrict dest, const void *restrict src, int c,
 static void handle_interr() {
     puts("Interruption!");
     if (fclient == -1) {
+        /* Open pipe because we may have closed a client in mount between
+         * sending pathname and opening client fifo (which locks the server). */
         fclient = try_open(_client_pipe_path, O_RDONLY);
         try_close(fclient);
     }
-    unlink(_client_pipe_path);
+    else {
+        tfs_unmount();
+    }
+    fflush(stdout);
     exit(EXIT_SUCCESS);
 }
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
-    signal(SIGINT, handle_interr);
+    static bool sig = false;
+    if(!sig) {
+        signal(SIGINT, handle_interr);
+        sig = true;
+    }
 
     printf("mount %d\n", getpid());
 
@@ -87,6 +96,8 @@ static int unmount_close_pipes(int res) {
     try_close(fserver);
 
     try_close(fclient);
+
+    fclient = -1;
 
     if (unlink(_client_pipe_path) != 0 && errno != ENOENT) {
         fprintf(stderr, "[ERR]: unlink(%s) failed: %s\n", _client_pipe_path,

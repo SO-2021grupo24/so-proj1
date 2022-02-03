@@ -13,6 +13,9 @@ extern int thread_exit;
 extern pthread_mutex_t open_session_locks[S];
 extern unsigned char free_open_session_entries[S];
 
+extern int open_files[S][MAX_OPEN_FILES];
+extern size_t open_files_amount[S];
+
 /* tfs_write is the most expensive request */
 /* We are considering we only use the size provided by the teachers in the
  * filesystem. */

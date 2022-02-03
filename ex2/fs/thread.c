@@ -20,8 +20,8 @@ static pthread_cond_t threads_cond[S];
 
 static prod_cons_t prod_cons[S];
 
-// int open_files[S][MAX_OPEN_FILES];
-// size_t open_files_pos = 0;
+int open_files[S][MAX_OPEN_FILES];
+size_t open_files_amount[S] = {0};
 
 ssize_t thread_read_data_cons(void *dest, size_t n, size_t session_id) {
     prod_cons_t *const cur_pc = &prod_cons[session_id];
@@ -32,8 +32,12 @@ ssize_t thread_read_data_cons(void *dest, size_t n, size_t session_id) {
 
     char *const upper = cur_pc->cons_ptr + (n / sizeof(char));
 
-    if (upper > cur_pc->prod_ptr)
+    if (upper > cur_pc->prod_ptr) {
+        fail_exit_if(pthread_mutex_unlock(&cur_pc->mutex),
+                     E_UNLOCK_PROD_CONS_MUTEX);
+
         return -1;
+    }
 
     memcpy(dest, (void *)cur_pc->cons_ptr, n);
 
@@ -357,6 +361,9 @@ void init_threads() {
         fail_exit_if(pthread_mutex_init(&open_session_locks[i], NULL),
                      E_INIT_SESSION_TABLE_MUTEX);
         free_open_session_entries[i] = FREE;
+
+        for (int j = 0; j < MAX_OPEN_FILES; ++j)
+            open_files[i][j] = -1;
     }
 
     for (size_t i = 0; i < S; ++i)

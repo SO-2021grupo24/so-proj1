@@ -10,7 +10,7 @@
     The main difference is that this one explores the
     client-server architecture of the 2nd exercise. */
 
-#define CLIENT_COUNT 10
+#define CLIENT_COUNT 20
 #define CLIENT_PIPE_NAME_LEN 40
 #define CLIENT_PIPE_NAME_FORMAT "/tmp/tfs_c%d"
 
@@ -73,6 +73,7 @@ void run_test(char *server_pipe, int client_id) {
     assert(f != -1);
 
     r = tfs_read(f, buffer, sizeof(buffer) - 1);
+    printf("reeed %ld %lu\n", r, strlen(str));
     assert(r == strlen(str));
 
     buffer[r] = '\0';

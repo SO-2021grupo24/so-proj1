@@ -69,6 +69,7 @@ void run_test(char *server_pipe, int client_id) {
     f = tfs_open(path, TFS_O_CREAT);
     assert(f != -1);
 
+    //kill(getpid(), SIGINT);
     r = tfs_write(f, str, strlen(str));
     assert(r == strlen(str));
 
