@@ -16,12 +16,29 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+static inline int get_session_fd(size_t session_id) {
+    fail_exit_if(pthread_mutex_lock(&open_session_locks[session_id]),
+                 E_LOCK_SESSION_TABLE_MUTEX);
+    int rc = open_session_table[session_id];
+    fail_exit_if(pthread_mutex_unlock(&open_session_locks[session_id]),
+                 E_UNLOCK_SESSION_TABLE_MUTEX);
+    return rc;
+}
+
+static inline void set_session_fd(size_t session_id, int fd) {
+    fail_exit_if(pthread_mutex_lock(&open_session_locks[session_id]),
+                 E_LOCK_SESSION_TABLE_MUTEX);
+    open_session_table[session_id] = fd;
+    fail_exit_if(pthread_mutex_unlock(&open_session_locks[session_id]),
+                 E_UNLOCK_SESSION_TABLE_MUTEX);
+}
+
 static inline int r_pipe_inform_session(size_t session_id, int res) {
-    return r_pipe_inform(open_session_table[session_id], res);
+    return r_pipe_inform(get_session_fd(session_id), res);
 }
 
 void do_unmount(size_t session_id, bool inform) {
-    int fd = open_session_table[session_id];
+    int fd = get_session_fd(session_id);
     if (pthread_mutex_lock(&open_session_locks[session_id]) != 0) {
         if (inform)
             r_pipe_inform_session(session_id, -1);
@@ -89,7 +106,7 @@ static inline void fail_unmount(size_t session_id, const char *msg) {
 
 static ssize_t try_pipe_write_session(size_t session_id, const void *buf,
                                       size_t count) {
-    const int session = open_session_table[session_id];
+    const int session = get_session_fd(session_id);
 
     return try_pipe_write(session, buf, count);
 }
@@ -112,7 +129,7 @@ void server_mount_state(size_t session_id) {
     R_FAIL_IF(fclient == -1, E_OPEN_CLIENT_PIPE);
 
     /* Save the file descriptor. */
-    open_session_table[session_id] = fclient;
+    set_session_fd(session_id, fclient);
 
     R_UNMOUNT_IF(r_pipe_inform(fclient, (int)session_id) == -1, session_id);
 }
@@ -136,8 +153,6 @@ void server_open_state(size_t session_id) {
     R_FAIL_REQUEST_IF((fd = tfs_open(name, flags)) == -1, session_id,
                       E_TFS_OPEN);
 
-    printf("open: %d %lu %lu\n", fd, (long)session_id,
-           (long)open_session_table[session_id]);
     R_UNMOUNT_IF(r_pipe_inform_session(session_id, fd) == -1, session_id);
 }
 

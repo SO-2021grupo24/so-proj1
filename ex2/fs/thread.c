@@ -4,6 +4,7 @@
 #include "tfs_server_essential.h"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -230,6 +231,60 @@ static int decide_mount() {
 
             /* We found an available entry! */
             return i;
+        }
+
+        else /*if (free_open_session_entries[i] == TAKEN)*/ {
+            /* We poll to check if the session is dead. */
+            /* In case a client dies between 2 requests... */
+            const int cur_fd = open_session_table[i];
+
+            /* Invalid fd (look inside to understand) */
+            if (cur_fd != -1) {
+                struct pollfd p;
+                p.fd = cur_fd;
+                p.events = POLLOUT;
+                p.revents = 0;
+
+                try_make_pipe_and_send_result_fail_exit_if(
+                    poll(&p, 1, -1) == -1, E_POLL);
+
+                if (p.revents & POLLERR) {
+                    try_make_pipe_and_send_result_fail_exit_if(
+                        pthread_mutex_unlock(&open_session_locks[i]) != 0,
+                        E_UNLOCK_SESSION_TABLE_MUTEX);
+
+                    /* The session's fd is dead. Now we make sure it sleeps by
+                     * locking the condvar mutex. */
+                    try_make_pipe_and_send_result_fail_exit_if(
+                        pthread_mutex_lock(&threads_mutex[i]),
+                        E_LOCK_SESSION_MUTEX);
+
+                    /* We should close the unused file descriptor. */
+                    try_close(cur_fd);
+
+                    /* Set back to TAKEN in case it was set to FREE meanwhile.
+                     */
+                    free_open_session_entries[i] = TAKEN;
+
+                    try_make_pipe_and_send_result_fail_exit_if(
+                        pthread_mutex_lock(&open_session_locks[i]) != 0,
+                        E_LOCK_SESSION_TABLE_MUTEX);
+
+                    /* Invalidate saved file descriptor. */
+                    open_session_table[i] = -1;
+
+                    try_make_pipe_and_send_result_fail_exit_if(
+                        pthread_mutex_unlock(&open_session_locks[i]) != 0,
+                        E_UNLOCK_SESSION_TABLE_MUTEX);
+
+                    try_make_pipe_and_send_result_fail_exit_if(
+                        pthread_mutex_unlock(&threads_mutex[i]),
+                        E_UNLOCK_SESSION_MUTEX);
+
+                    /* We found an available entry! */
+                    return i;
+                }
+            }
         }
 
         try_make_pipe_and_send_result_fail_exit_if(

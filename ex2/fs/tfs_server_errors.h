@@ -51,5 +51,6 @@
 
 #define E_UNLINK ("[ERR] FATAL! unlink(%s) failed: %s\n")
 #define E_MKFIFO ("[ERR] FATAL! mkfifo failed")
+#define E_POLL ("[ERR] FATAL! poll failed")
 
 #endif /*TFS_SERVER_ERRORS_H*/
