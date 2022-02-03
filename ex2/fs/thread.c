@@ -61,7 +61,7 @@ static size_t ipc_sizes[TFS_OP_CODE_AMOUNT] = {
         }                                                                      \
     } while (0)
 
-int thread_worker_schedule_prod(size_t session_id, char op_code) {
+void thread_worker_schedule_prod(size_t session_id, char op_code) {
     printf("OP Code: %hhd Session: %lu\n", op_code, session_id);
     prod_cons_t *const cur_pc = &prod_cons[session_id];
 
@@ -76,7 +76,7 @@ int thread_worker_schedule_prod(size_t session_id, char op_code) {
     if (op_code == TFS_OP_CODE_UNMOUNT) {
         fail_exit_if(pthread_mutex_unlock(&cur_pc->mutex),
                      E_UNLOCK_PROD_CONS_MUTEX);
-        return 0;
+        return;
     }
 
     /* Read all the request and save in the thread buffer. */
@@ -90,7 +90,7 @@ int thread_worker_schedule_prod(size_t session_id, char op_code) {
                          E_UNLOCK_PROD_CONS_MUTEX);
             fail_exit_if(amount == -1, E_READ_REQUESTS_PIPE);
             perror(E_INVALID_REQUEST);
-            return -1;
+            exit(EXIT_FAILURE);
         }
         cur_pc->prod_ptr += ((size_t)amount / sizeof(char));
         memcpy(&sz, cur_pc->prod_ptr - sizeof(size_t), sizeof(size_t));
@@ -99,7 +99,7 @@ int thread_worker_schedule_prod(size_t session_id, char op_code) {
                          E_UNLOCK_PROD_CONS_MUTEX);
             fail_exit_if(amount == -1, E_READ_REQUESTS_PIPE);
             perror(E_INVALID_REQUEST);
-            return -1;
+            exit(EXIT_FAILURE);
         }
 
         fail_exit_if(amount == -1, E_READ_REQUESTS_PIPE);
@@ -112,7 +112,7 @@ int thread_worker_schedule_prod(size_t session_id, char op_code) {
                          E_UNLOCK_PROD_CONS_MUTEX);
             fail_exit_if(amount == -1, E_READ_REQUESTS_PIPE);
             perror(E_INVALID_REQUEST);
-            return -1;
+            exit(EXIT_FAILURE);
         }
         fail_exit_if(amount == -1, E_READ_REQUESTS_PIPE);
         cur_pc->prod_ptr += ((size_t)amount / sizeof(char));
@@ -120,7 +120,7 @@ int thread_worker_schedule_prod(size_t session_id, char op_code) {
 
     fail_exit_if(pthread_mutex_unlock(&cur_pc->mutex),
                  E_UNLOCK_PROD_CONS_MUTEX);
-    return 0;
+    return;
 }
 
 void *thread_wait(void *arg) {
@@ -178,8 +178,7 @@ void *thread_wait(void *arg) {
             printf("shutdown done %lu\n", session_id);
             break;
         default:
-            break;
-            // exit(EXIT_FAILURE);
+            exit(EXIT_FAILURE);
         }
         printf("Stopping session %lu\n", session_id);
     }
@@ -193,9 +192,9 @@ void *thread_wait(void *arg) {
 static int try_make_pipe_and_send_result(int rc) {
     char client_pipe_path[PATHNAME_MAX_SIZE];
 
-    if (try_read_all(req_pipe, client_pipe_path, PATHNAME_MAX_SIZE) !=
-        PATHNAME_MAX_SIZE)
-        return -1;
+    fail_exit_if(try_read_all(req_pipe, client_pipe_path, PATHNAME_MAX_SIZE) !=
+                     PATHNAME_MAX_SIZE,
+                 E_INVALID_REQUEST);
 
     int fclient = try_open(client_pipe_path, O_WRONLY);
 
@@ -273,15 +272,14 @@ void main_thread_work() {
                 continue;
         }
 
-        if (thread_worker_schedule_prod((unsigned)session_id, op_code) != -1) {
-            printf("Waking session %lu\n", session_id);
-            fail_exit_if(pthread_mutex_lock(&threads_mutex[session_id]),
-                         E_LOCK_SESSION_MUTEX);
-            fail_exit_if(pthread_cond_signal(&threads_cond[session_id]),
-                         E_SIGNAL_SESSION_CONDVAR);
-            fail_exit_if(pthread_mutex_unlock(&threads_mutex[session_id]),
-                         E_UNLOCK_SESSION_MUTEX);
-        }
+        thread_worker_schedule_prod((unsigned)session_id, op_code);
+        printf("Waking session %lu\n", session_id);
+        fail_exit_if(pthread_mutex_lock(&threads_mutex[session_id]),
+                     E_LOCK_SESSION_MUTEX);
+        fail_exit_if(pthread_cond_signal(&threads_cond[session_id]),
+                     E_SIGNAL_SESSION_CONDVAR);
+        fail_exit_if(pthread_mutex_unlock(&threads_mutex[session_id]),
+                     E_UNLOCK_SESSION_MUTEX);
     }
 }
 

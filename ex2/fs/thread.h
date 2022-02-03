@@ -29,7 +29,7 @@ typedef struct {
 } prod_cons_t;
 
 ssize_t thread_read_data_cons(void *dest, size_t n, size_t session_id);
-int thread_worker_schedule_prod(size_t session_id, char op_code);
+void thread_worker_schedule_prod(size_t session_id, char op_code);
 void *thread_wait(void *arg);
 void main_thread_work();
 void init_threads();
