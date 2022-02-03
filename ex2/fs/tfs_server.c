@@ -159,7 +159,7 @@ void server_open_state(size_t session_id) {
     open_files_amount[session_id]++;
 
     for (size_t i = 0; i < MAX_OPEN_FILES; ++i) {
-        if(open_files[session_id][i] == -1)
+        if (open_files[session_id][i] == -1)
             open_files[session_id][i] = fd;
     }
 

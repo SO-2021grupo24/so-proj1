@@ -38,8 +38,7 @@ static void handle_interr() {
          * sending pathname and opening client fifo (which locks the server). */
         fclient = try_open(_client_pipe_path, O_RDONLY);
         try_close(fclient);
-    }
-    else {
+    } else {
         tfs_unmount();
     }
     fflush(stdout);
@@ -48,7 +47,7 @@ static void handle_interr() {
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     static bool sig = false;
-    if(!sig) {
+    if (!sig) {
         signal(SIGINT, handle_interr);
         sig = true;
     }
