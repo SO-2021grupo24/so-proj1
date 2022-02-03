@@ -246,5 +246,7 @@ int main(int argc, char **argv) {
 
     main_thread_work();
 
+    fini_threads();
+
     return 0;
 }

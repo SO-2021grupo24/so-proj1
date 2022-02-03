@@ -1,8 +1,11 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "../fs/tfs_server_errors.h"
@@ -43,15 +46,19 @@ ssize_t try_read(int fd, void *buf, size_t sz) {
 }
 
 ssize_t try_read_all(int fd, void *buf, size_t sz) {
-    return try_read(fd, buf, sz);
     ssize_t bytes = 0;
 
     do {
         ssize_t rc =
             try_read(fd, (void *)((char *)buf + bytes), sz - (size_t)bytes);
 
+        /* EOF... */
+        if (rc == 0) {
+            return rc;
+        }
+
         if (rc == -1)
-            return -1;
+            return -1 + (fprintf(stderr, "whdu\n") & 0);
 
         bytes += rc;
     } while (bytes != sz);
@@ -94,7 +101,8 @@ ssize_t try_pipe_write(int fd, const void *buf, size_t count) {
 }
 
 int r_pipe_inform(int fd, int res) {
-    try_pipe_write(fd, &res, sizeof(int));
+    if (try_pipe_write(fd, &res, sizeof(int)) == -1)
+        return -1;
 
     return res;
 }

@@ -32,6 +32,7 @@
     ("[ERR] FATAL! Could not open server requests pipe")
 #define E_READ_REQUESTS_PIPE                                                   \
     ("[ERR] FATAL! Could not read server requests pipe")
+#define E_INVALID_REQUEST ("[ERR] Invalid request")
 #define E_OPEN_CLIENT_PIPE ("[ERR] FATAL! Could not open client pipe")
 #define E_SIGPIPE_CLIENT_PIPE ("[ERR] Client stopped listening (SIGPIPE)")
 #define E_WRITE_CLIENT_PIPE ("[ERR] Failed to write to client pipe")

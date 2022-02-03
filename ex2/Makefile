@@ -15,7 +15,7 @@ SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
 #TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test
-TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test tests/client_server_shutdown_test_CORREIA tests/client_server_simple_test_CORREIA tests/simple_mount_test
+TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test tests/client_server_simple_test tests/client_server_shutdown_test_CORREIA tests/client_server_simple_test_CORREIA tests/simple_mount_test tests/client_server_shutdown_test_CORREIAv2 tests/block_destroy_simple_CORREIA
 
 # VPATH is a variable used by Makefile which finds *sources* and makes them available throughout the codebase
 # vpath %.h <DIR> tells make to look for header files in <DIR>
@@ -71,6 +71,8 @@ tests/client_server_simple_test: tests/client_server_simple_test.o client/tecnic
 tests/client_server_simple_test_CORREIA: tests/client_server_simple_test_CORREIA.o client/tecnicofs_client_api.o common/common.o
 tests/simple_mount_test: tests/simple_mount_test.o client/tecnicofs_client_api.o common/common.o
 tests/client_server_shutdown_test_CORREIA: tests/client_server_shutdown_test_CORREIA.o client/tecnicofs_client_api.o common/common.o
+tests/client_server_shutdown_test_CORREIAv2: tests/client_server_shutdown_test_CORREIAv2.o client/tecnicofs_client_api.o common/common.o
+tests/block_destroy_simple_CORREIA: fs/operations.o fs/state.o common/common.o
 fs/tfs_server: fs/operations.o fs/state.o fs/thread.o common/common.o
 tests/lib_destroy_after_all_closed_test: fs/operations.o fs/state.o common/common.o
 

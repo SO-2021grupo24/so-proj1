@@ -6,15 +6,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/*  This test is similar to test1.c from the 1st exercise.
-    The main difference is that this one explores the
-    client-server architecture of the 2nd exercise. */
+/* This test launches child processes that open a file, sleep for a second and
+ * then close the files. Meanwhile, another process asks the tfs_server to
+ * shutdown. */
 
-#define CLIENT_COUNT 10
+#define CLIENT_COUNT 20
 #define CLIENT_PIPE_NAME_LEN 40
 #define CLIENT_PIPE_NAME_FORMAT "/tmp/tfs_c%d"
 
 void run_test(char *server_pipe, int client_id);
+void run_close_function(char *server_pipe, int client_id);
 
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -25,7 +26,7 @@ int main(int argc, char **argv) {
 
     int child_pids[CLIENT_COUNT];
 
-    for (int i = 0; i < CLIENT_COUNT; ++i) {
+    for (int i = 1; i < CLIENT_COUNT; ++i) {
         int pid = fork();
         assert(pid >= 0);
         if (pid == 0) {
@@ -36,6 +37,10 @@ int main(int argc, char **argv) {
             child_pids[i] = pid;
         }
     }
+
+    sleep(1);
+
+    run_close_function(argv[1], 0);
 
     for (int i = 0; i < CLIENT_COUNT; ++i) {
         int result;
@@ -72,6 +77,8 @@ void run_test(char *server_pipe, int client_id) {
     f = tfs_open(path, 0);
     assert(f != -1);
 
+    sleep(4);
+
     r = tfs_read(f, buffer, sizeof(buffer) - 1);
     assert(r == strlen(str));
 
@@ -82,4 +89,12 @@ void run_test(char *server_pipe, int client_id) {
     assert(tfs_close(f) != -1);
 
     assert(tfs_unmount() == 0);
+}
+
+void run_close_function(char *server_pipe, int client_id) {
+    char client_pipe[40];
+    sprintf(client_pipe, CLIENT_PIPE_NAME_FORMAT, client_id);
+    assert(tfs_mount(client_pipe, server_pipe) == 0);
+
+    assert(tfs_shutdown_after_all_closed() == 0);
 }
