@@ -46,8 +46,6 @@
     ("[ERR] FATAL! Failed to lock session table mutex")
 #define E_UNLOCK_SESSION_TABLE_MUTEX                                           \
     ("[ERR] FATAL! Failed to lock session table mutex")
-#define E_FINI_SESSION_TABLE_MUTEX                                             \
-    ("[ERR] FATAL! Failed to lock session table mutex")
 
 #define E_UNLINK ("[ERR] FATAL! unlink(%s) failed: %s\n")
 #define E_MKFIFO ("[ERR] FATAL! mkfifo failed")

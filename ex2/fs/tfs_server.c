@@ -21,18 +21,12 @@ static inline int r_pipe_inform_session(size_t session_id, int res) {
 }
 
 void do_unmount(size_t session_id, bool inform) {
+    /* threads_mutex[session_id] would have been locked/unlocked,
+     * but it protects the condvar where sessions threads sleep, so
+     * if execution reached here, we are already in critical section. */
     int fd = open_session_table[session_id];
-    if (pthread_mutex_lock(&open_session_locks[session_id]) != 0) {
-        if (inform)
-            r_pipe_inform_session(session_id, -1);
-        perror(E_LOCK_SESSION_TABLE_MUTEX);
-        exit(EXIT_FAILURE);
-    }
 
     free_open_session_entries[session_id] = FREE;
-
-    fail_exit_if(pthread_mutex_unlock(&open_session_locks[session_id]),
-                 E_UNLOCK_SESSION_TABLE_MUTEX);
 
     printf("Freeing session %lu\n", session_id);
     if (inform) {
@@ -43,8 +37,6 @@ void do_unmount(size_t session_id, bool inform) {
      * if a
      * file descriptor goes unused. We'll just let it abort when the table is
      * full... */
-    // void usleep(unsigned);
-    // usleep(1000*1000);
     try_close(fd);
 }
 

@@ -10,7 +10,7 @@ extern int req_pipe;
 extern int open_session_table[S];
 extern int thread_exit;
 
-extern pthread_mutex_t open_session_locks[S];
+extern pthread_mutex_t threads_mutex[S];
 extern unsigned char free_open_session_entries[S];
 
 /* tfs_write is the most expensive request */

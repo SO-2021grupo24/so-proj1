@@ -11,10 +11,9 @@ int req_pipe;
 
 unsigned char free_open_session_entries[S];
 int open_session_table[S];
-pthread_mutex_t open_session_locks[S];
 
 static pthread_t threads[S];
-static pthread_mutex_t threads_mutex[S];
+pthread_mutex_t threads_mutex[S];
 static pthread_cond_t threads_cond[S];
 
 static prod_cons_t prod_cons[S];
@@ -217,24 +216,23 @@ static int decide_mount() {
     // fprintf(stderr, "trying %lu\n", pthread_self());
     for (int i = 0; i < S; i++) {
         try_make_pipe_and_send_result_fail_exit_if(
-            pthread_mutex_lock(&open_session_locks[i]) != 0,
-            E_LOCK_SESSION_TABLE_MUTEX);
+            pthread_mutex_lock(&threads_mutex[i]) != 0, E_LOCK_SESSION_MUTEX);
 
         if (free_open_session_entries[i] == FREE) {
             printf("Mount decided id: %d %lu\n", i, pthread_self());
             free_open_session_entries[i] = TAKEN;
 
             try_make_pipe_and_send_result_fail_exit_if(
-                pthread_mutex_unlock(&open_session_locks[i]) != 0,
-                E_UNLOCK_SESSION_TABLE_MUTEX);
+                pthread_mutex_unlock(&threads_mutex[i]) != 0,
+                E_UNLOCK_SESSION_MUTEX);
 
             /* We found an available entry! */
             return i;
         }
 
         try_make_pipe_and_send_result_fail_exit_if(
-            pthread_mutex_unlock(&open_session_locks[i]) != 0,
-            E_UNLOCK_SESSION_TABLE_MUTEX);
+            pthread_mutex_unlock(&threads_mutex[i]) != 0,
+            E_UNLOCK_SESSION_MUTEX);
     }
 
     /* We return -1 for error... */
@@ -296,8 +294,8 @@ void init_threads() {
         fail_exit_if(pthread_cond_init(&threads_cond[i], NULL),
                      E_INIT_SESSION_CONDVAR);
 
-        fail_exit_if(pthread_mutex_init(&open_session_locks[i], NULL),
-                     E_INIT_SESSION_TABLE_MUTEX);
+        fail_exit_if(pthread_mutex_init(&threads_mutex[i], NULL),
+                     E_INIT_SESSION_MUTEX);
         free_open_session_entries[i] = FREE;
     }
 
@@ -317,7 +315,5 @@ void fini_threads() {
                      E_FINI_PROD_CONS_MUTEX);
         fail_exit_if(pthread_cond_destroy(&threads_cond[i]),
                      E_FINI_SESSION_CONDVAR);
-        fail_exit_if(pthread_mutex_destroy(&open_session_locks[i]),
-                     E_FINI_SESSION_TABLE_MUTEX);
     }
 }
