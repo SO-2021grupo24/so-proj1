@@ -7,6 +7,7 @@
 #include "tfs_server_macros.h"
 
 extern int req_pipe;
+extern char *req_pipe_name;
 extern int open_session_table[S];
 extern int thread_exit;
 

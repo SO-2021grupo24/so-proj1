@@ -49,6 +49,7 @@ ssize_t thread_read_data_cons(void *dest, size_t n, size_t session_id) {
     return (ssize_t)n;
 }
 
+/* OP_CODE and session ID. */
 #define IPC_ALREADY_READ (sizeof(char) + sizeof(int))
 static size_t ipc_sizes[TFS_OP_CODE_AMOUNT] = {
     0,

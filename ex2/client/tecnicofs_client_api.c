@@ -118,10 +118,10 @@ int tfs_unmount() {
               E_REQUESTS_PIPE_WRITE, unmount_close_pipes(-1));
 
     printf("Reading %d\n", session_id);
-    int res;
+    int res = 0;
     R_FAIL_IF(try_read_all(fclient, &res, sizeof(int)) == -1,
               E_CLIENT_PIPE_READ, unmount_close_pipes(-1));
-    printf("Returned %d %d\n", session_id, res);
+    printf("Unmount returned %d %d\n", session_id, res);
 
     return unmount_close_pipes(res);
 }

@@ -16,7 +16,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static char *req_pipe_name;
+char *req_pipe_name;
 
 static inline int get_session_fd(size_t session_id) {
     fail_exit_if(pthread_mutex_lock(&open_session_locks[session_id]),
@@ -58,10 +58,13 @@ void do_unmount(size_t session_id, bool inform) {
         r_pipe_inform(fd, 0);
     }
 
+    /* Unmount any files that may be open in case the client died, for example.
+     */
     if (open_files_amount[session_id] != 0) {
         for (size_t i = 0; i < MAX_OPEN_FILES; ++i) {
             if (open_files[session_id][i] != -1) {
-                fprintf(stderr, "Closing file %u\n", open_files[session_id][i]);
+                // fprintf(stderr, "Closing file %u\n",
+                // open_files[session_id][i]);
                 tfs_close(open_files[session_id][i]);
                 open_files[session_id][i] = -1;
                 --open_files_amount[session_id];
@@ -71,7 +74,7 @@ void do_unmount(size_t session_id, bool inform) {
 
     /* We don't verify close, because we don't think we need to kill the server
      * if a
-     * file descriptor goes unused. We'll just let it abort when the table is
+     * file descriptor goes unused. We'll just let it abort when the fd table is
      * full... */
     try_close(fd);
 }

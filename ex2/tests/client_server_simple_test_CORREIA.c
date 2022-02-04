@@ -73,7 +73,6 @@ void run_test(char *server_pipe, int client_id) {
     assert(f != -1);
 
     r = tfs_read(f, buffer, sizeof(buffer) - 1);
-    printf("reeed %ld %lu\n", r, strlen(str));
     assert(r == strlen(str));
 
     buffer[r] = '\0';
